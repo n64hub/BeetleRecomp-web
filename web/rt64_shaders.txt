@@ -15,7 +15,7 @@
 # Right, which Car Select takes). Not recorded: the tracks a save opens later, Championship's screens between races,
 # Time Attack, Two Player's split screen, Beetle Battle and a race's end. Flags follow settings (filtering, HDR,
 # upscaling), so a change to one of those defaults means recording again. The shaders tools/play_plan.json's plays
-# missed, where its car went other ways, were added by hand: 4 in section 0 and 11 in Coventry Cove's.
+# missed, where its car went other ways, were added by hand: 4 in section 0 and 15 in Coventry Cove's.
 00504240 00002c3f fc119623 ff2fffff 04cb550b
 0c184340 00182c3f fcffffff fffe7838 0800000a
 0f0a7008 00002c3f fc11fe23 fffff3f9 04cb540b
@@ -219,6 +219,10 @@ section coventry-cove
 0c1849d8 00182c0f fc117e04 fffffffa 0886140e
 0c185279 00182c0f fc117e04 fffffffa 088e000a
 0c182078 00192c0f fc26a004 1ffc93fc 188e000a
+0c182078 0019ac3f fc26a004 1f1093ff 188e000e
+0c182078 00192c3f fc26a004 1f1093ff 188e000e
+0c182078 00192c0f fc26a004 1ffc93fc 1aaeaa0a
+0c182078 00182c0f fc1219ff fffffe38 0803100a
 section mount-mayhem
 0c183078 0018ac0f fc1219ff fffffe38 088a000e
 0c184dd8 00182c0f fc127fff fffff838 088a000e
