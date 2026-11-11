@@ -87,8 +87,10 @@ lib/rt64 rt64-sdl-filter-restore
 lib/N64ModernRuntime N64ModernRuntime-interrupt-mask"
 stamp="$(git -C $browser rev-parse HEAD) $( (cat tools/build_web.sh scripts/dependency-patches/*.patch web/patches/*; echo "$web_patches") |
     sha1sum | cut -c1-40)"
-# A checkout reset since (rt64 clean) is patched again whatever the stamp says.
-if [[ "$(cat $prep/web-patched 2> /dev/null)" != "$stamp" ]] || git -C lib/rt64 diff --quiet; then
+# A checkout reset since is patched again whatever the stamp says: rt64 clean, or this repo's RecompFrontend, whose
+# files a checkout of another commit of this repo puts back (a build host's sync).
+if [[ "$(cat $prep/web-patched 2> /dev/null)" != "$stamp" ]] || git -C lib/rt64 diff --quiet ||
+    git diff --quiet -- lib/RecompFrontend; then
     for s in lib/rt64 lib/N64ModernRuntime lib/N64Recomp; do
         git -C $s submodule foreach --recursive -q 'git reset -q --hard && git clean -fdq'
         git -C $s submodule update -q --init --recursive --force
