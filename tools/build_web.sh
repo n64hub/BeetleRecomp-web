@@ -11,7 +11,7 @@
 #    lib/N64Recomp-browser or web/patches moved since the last time (build-web-prep/web-patched records it):
 #    apply.cmake can't take a checkout from one version of its patches to another. rt64 first goes to the upstream
 #    commit the web's patches are made on (web/patches/rt64-upstream.patch: upstream rt64 merged into this repo's rt64
-#    without a conflict, and plume at the commit that one pins), then the game's own patches as
+#    without a conflict, and plume at the commit that one pins, in rt64's index too), then the game's own patches as
 #    scripts/apply-dependency-patches.py applies them but the Windows and macOS ones the page doesn't build, then
 #    N64Recomp-browser's web support (lib/N64Recomp-browser/patches/apply.cmake, project by project, lib/N64Recomp
 #    too, which writes the game's code, and lib/RecompFrontend, this repo's own copy), but for the files where the two
@@ -102,6 +102,9 @@ if [[ "$(cat $prep/web-patched 2> /dev/null)" != "$stamp" ]] || git -C lib/rt64 
         git -C lib/rt64/src/contrib/plume fetch -q https://github.com/renderbag/plume $plume
         git -C lib/rt64/src/contrib/plume checkout -q $plume
     fi
+    # rt64's index names that plume too, so a recursive submodule update over this checkout (a build host's sync)
+    # finds plume where rt64 says it is and leaves it, patched, in place of putting back the commit rt64's own pins.
+    git -C lib/rt64 update-index --cacheinfo 160000,$plume,src/contrib/plume
     git -C lib/rt64/src/contrib/plume submodule update -q --init --recursive
     while read -r checkout patch; do
         git -C "$checkout" apply --whitespace=nowarn "$root/scripts/dependency-patches/$patch.patch"
