@@ -21,3 +21,6 @@
 [submodule "lib/freetype-windows-binaries"]
 	path = lib/freetype-windows-binaries
 	url = https://github.com/ubawurinna/freetype-windows-binaries.git
+[submodule "lib/N64Recomp-browser"]
+	path = lib/N64Recomp-browser
+	url = https://github.com/n64hub/N64Recomp-browser

@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include <fstream>
 #include <cstdio>
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #include <execinfo.h>
 #endif
 #if defined(__APPLE__)
@@ -173,7 +173,7 @@ void context_error(recompui::ContextId id, ContextErrorType type) {
 
     // The process exits below, so leave the call site in the log for diagnosis.
     fprintf(stderr, "[recompui] UI context error: %s\n", error_message);
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
     void* frames[64];
     const int frame_count = backtrace(frames, 64);
     backtrace_symbols_fd(frames, frame_count, fileno(stderr));

@@ -232,3 +232,26 @@ controller discovery and reconnect, templates, saves, audio, mods, fullscreen/Re
 menus, and a sustained race. A Mach-O minimum check cannot prove runtime API or
 GPU behavior, and no native macOS build or version-matrix run has been completed
 by this Windows review. Do not mark a release family passed until its result exists.
+
+## The web page
+
+`tools/build_web.sh` builds the page (`build-web/BeetleRecomp.html`, `.js`, `.wasm`, `.data`) from your USA ROM, on
+Linux with Docker, everything in `tools/docker/Dockerfile`'s image (Emscripten and what the decomp and the generators
+need):
+
+```bash
+bash tools/build_web.sh path/to/baserom.us.z64 [cpus]
+```
+
+It checks the decomp against the ROM, makes the recompiled code with the web-patched N64Recomp, and builds the page
+with the web support of [N64Recomp-browser](https://github.com/n64hub/N64Recomp-browser) (`lib/N64Recomp-browser`,
+at the tag it pins), whose patches it applies over the submodules after this repo's own. The script's header says
+how, and why the files in `web/patches/files.txt` take a patch merged by hand. Its ROM-derived files stay in the
+checkout, ignored by git. Serve `build-web` with `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp` (threads need SharedArrayBuffer), or with `coi_serviceworker.js` beside
+the page where headers can't be set, and open it in a browser with WebGPU. The ROM, settings and saves are kept in the
+browser's storage.
+
+The page records and builds a list of the game's RT64 shaders before the game starts (`web/rt64_shaders.txt`, whose
+header says how it was recorded), and `tools/play_plan.json` is the play N64Recomp-browser's `tools/play_page.mjs`
+measures it by. `tools/game_state.js` reads where the game is from RDRAM for both.

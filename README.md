@@ -1,3 +1,20 @@
+> [!WARNING]
+> **This is n64hub/BeetleRecomp-web, a fork, not BeetleRecomp.** Its `main` branch builds the game into a web page
+> (WebGPU, through [N64Recomp-browser](https://github.com/n64hub/N64Recomp-browser)), and everything on that branch
+> past upstream's commits was written by AI (Claude). It is not made, endorsed or supported by BeetleRecomp's authors:
+> nothing here is offered upstream, and please don't take issues with this fork to them. Building the page:
+> [BUILDING.md](BUILDING.md) (The web page).
+>
+> This port is here to build out and test N64Recomp-browser's web support on another game than the ones it was written
+> for: what it turns up is fixed there where it can be, so every recomp's page gets the fix.
+
+**Play it in the browser: https://n64hub.com/beetle-adventure-racing/**, with your own Beetle Adventure Racing! ROM
+(USA), picked in the launcher and kept in the browser. It needs WebGPU (Chrome or Edge 113 and up). The page is built
+from this branch and published with N64Recomp-browser's `tools/publish_page.sh`, so it can be a commit or two behind.
+It has the desktop build's options, at the desktop's defaults (resolution Auto, the display's frame rate) but the
+aspect ratio, which is Expand: widescreen, filling the browser's window. It has no MSAA, which RT64 can't do on WebGPU
+(it has no sample positions), and none of RT64's developer tools.
+
 # BeetleRecomp
 
 Apple Silicon preparation and remaining native qualification are tracked in [the macOS review](docs/MACOS_REVIEW.md). A fully qualified M1 build is not yet available.

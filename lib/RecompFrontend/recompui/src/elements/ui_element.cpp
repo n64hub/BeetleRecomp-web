@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #include <execinfo.h>
 #endif
 #if defined(__APPLE__)
@@ -53,7 +53,7 @@ Element::Element(ResourceId rid, Element* parent, uint32_t events_enabled, Rml::
 static void report_direct_destroy(Rml::Element* child, Rml::Element* parent) {
     fprintf(stderr, "[recompui] %s destroyed while still a child of %s; detaching it. Destroyed from:\n",
         child->GetId().c_str(), parent->GetId().c_str());
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
     void* frames[64];
     const int frame_count = backtrace(frames, 64);
     backtrace_symbols_fd(frames, frame_count, fileno(stderr));

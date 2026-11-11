@@ -60,6 +60,9 @@ static std::filesystem::path g_default_rom_path;
 #include <SDL.h>
 #ifdef BEETLE_ENABLE_FRONTEND
 #include "recompinput/rumble.h"
+#ifdef __EMSCRIPTEN__
+#include "audio_output.h"                     // N64Recomp-browser: the page's sound, on the browser's audio thread
+#endif
 #endif
 #if defined(_WIN32) || defined(__APPLE__)
 #include <SDL_syswm.h> // Native HWND/Cocoa window. Avoid X11's conflicting macros on Linux.
@@ -255,8 +258,15 @@ static ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callba
     // the window to have been created with the matching flag. Without it SDL fails the surface call with
     // "The specified window isn't a Vulkan window" and RT64 then dereferences the null surface and segfaults.
     // We deliberately omit the flag on Windows so RT64's default D3D12 path is unaffected.
+#if defined(__EMSCRIPTEN__)
+    // On a page the window is the canvas, which N64Recomp-browser's shell sizes in device pixels itself, and RT64 draws
+    // through WebGPU: neither a high-DPI window nor a Vulkan one.
+    Uint32 window_flags = SDL_WINDOW_RESIZABLE;
+#else
     Uint32 window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
-#if defined(__APPLE__)
+#endif
+#if defined(__EMSCRIPTEN__)
+#elif defined(__APPLE__)
     window_flags |= SDL_WINDOW_METAL;
 #elif !defined(_WIN32)
     window_flags |= SDL_WINDOW_VULKAN;
@@ -269,7 +279,7 @@ static ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callba
         // when the machine has no usable Vulkan driver at all. Tell the player how to fix it rather than
         // leaving them with a silent black window / a stderr line no GUI launcher ever shows.
         std::fprintf(stderr, "[BeetleRecomp] SDL_CreateWindow failed: %s\n", SDL_GetError());
-#if !defined(_WIN32) && !defined(__APPLE__)
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(__EMSCRIPTEN__)
         bar_user_message(SDL_MESSAGEBOX_ERROR,
             "Beetle Adventure Racing: Recompiled could not create a Vulkan window.\n\n"
             "Your system is most likely missing a Vulkan driver. Install your GPU's Vulkan support:\n"
@@ -493,6 +503,14 @@ static void update_gfx(ultramodern::gfx_callbacks_t::gfx_data_t /*data*/) {
 // BAR_AUDIO_CAPTURE=<path> dumps the raw (untransformed) received stream before the device transform,
 // so a capture alone does not prove sound reached the output device.
 static SDL_AudioDeviceID g_audio_dev = 0;
+#ifdef __EMSCRIPTEN__
+// On a page the sound plays through N64Recomp-browser's AudioWorklet output (audio_output.h) instead of SDL's queue:
+// Emscripten's SDL2 plays from the page's thread, where WebGPU's work runs, and its sound breaks up whenever that thread
+// is busy. It plays float frames at the page's audio context's rate, so an SDL audio stream converts the game's s16
+// at the game's rate to that; g_audio_dev is 1 while it is open.
+static uint32_t g_web_out_freq = 0;
+static SDL_AudioStream* g_web_stream = nullptr;
+#endif
 static uint32_t g_dev_freq  = 0;        // freq the SDL device is currently open at
 static uint32_t g_game_freq = 0;        // last freq the game requested (for capture/WAV)
 static constexpr int kBarBytesPerFrame = 2 * (int)sizeof(int16_t);   // stereo s16
@@ -585,6 +603,19 @@ static void bar_open_audio(uint32_t freq) {
     }
     if (!bar_audio_play_enabled()) return;          // muted: never open a device, never play
     if (g_audio_dev != 0 && g_dev_freq == freq) return;
+#ifdef __EMSCRIPTEN__
+    if (g_web_out_freq == 0) g_web_out_freq = n64recomp_browser::audio::open(2);
+    if (g_web_stream != nullptr) SDL_FreeAudioStream(g_web_stream);
+    g_web_stream = SDL_NewAudioStream(AUDIO_S16SYS, 2, (int)freq, AUDIO_F32SYS, 2, (int)g_web_out_freq);
+    if (g_web_stream == nullptr) {
+        std::fprintf(stderr, "[BeetleRecomp] SDL_NewAudioStream failed: %s\n", SDL_GetError());
+        g_audio_dev = 0;
+        return;
+    }
+    g_audio_dev = 1;
+    g_dev_freq = freq;
+    return;
+#endif
     if (g_audio_dev != 0) { SDL_CloseAudioDevice(g_audio_dev); g_audio_dev = 0; }
     if (SDL_WasInit(SDL_INIT_AUDIO) == 0 && SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
         std::fprintf(stderr, "[BeetleRecomp] SDL_InitSubSystem(AUDIO) failed: %s\n", SDL_GetError());
@@ -655,7 +686,15 @@ static void queue_samples(int16_t* samples, size_t count) {
             }
         }
     }
+#ifdef __EMSCRIPTEN__
+    SDL_AudioStreamPut(g_web_stream, out.data(), (int)(count * sizeof(int16_t)));
+    static std::vector<float> converted;
+    converted.resize((size_t)SDL_AudioStreamAvailable(g_web_stream) / sizeof(float));
+    const int got = SDL_AudioStreamGet(g_web_stream, converted.data(), (int)(converted.size() * sizeof(float)));
+    if (got > 0) n64recomp_browser::audio::queue(converted.data(), (size_t)got / (2 * sizeof(float)));
+#else
     SDL_QueueAudio(g_audio_dev, out.data(), (Uint32)(count * sizeof(int16_t)));
+#endif
 }
 
 std::atomic<int> g_bar_audio_peak{ 0 }; // Producer and queue diagnostics run on separate threads.
@@ -663,7 +702,12 @@ std::atomic<long> g_bar_audio_clip{ 0 };
 
 static size_t get_frames_remaining() {
     if (g_audio_dev == 0) return 0;
+#ifdef __EMSCRIPTEN__
+    // In the game's frames, which is what it paces itself by.
+    size_t frames = (size_t)((uint64_t)n64recomp_browser::audio::queued_frames() * g_dev_freq / g_web_out_freq);
+#else
     size_t frames = (size_t)(SDL_GetQueuedAudioSize(g_audio_dev) / (Uint32)kBarBytesPerFrame);
+#endif
     { static const bool dbg = std::getenv("BAR_AUDIO_DBG") != nullptr; if (dbg) {
         // Inter-call wall delta (called ~once per game frame). Flag genuine near-underruns (queue almost
         // empty) and egregious single-frame stalls (>50 ms = >3 VI) — not normal 16.6 ms frames.

@@ -961,8 +961,14 @@ bar::frontend::create_render_context(uint8_t* rdram,
     // null check per frame. F2 is unbound in the fork for the same reason -- see
     // lib/rt64/src/hle/rt64_application.cpp.
     (void)developer_mode;
+#ifdef __EMSCRIPTEN__
+    // Not on a page, which has no use for RT64's debug UI: F1 there would build it for WebGPU mid-game.
+    constexpr bool rt64_developer_mode = false;
+#else
+    constexpr bool rt64_developer_mode = true;
+#endif
     auto ctx = recompui::renderer::create_render_context(
-        rdram, window_handle, ultramodern::renderer::PresentationMode::Console, true);
+        rdram, window_handle, ultramodern::renderer::PresentationMode::Console, rt64_developer_mode);
 
     trace(ctx ? "create_render_context: ok" : "create_render_context: returned null");
     return ctx;

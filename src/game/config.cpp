@@ -215,7 +215,15 @@ GraphicsConfig default_graphics_config() {
     c.hr_option       = HUDRatioMode::Full;                   // widescreen HUD: anchor the racing HUD to the widened frame's edges
     c.api_option      = GraphicsApi::Auto;                    // RT64 picks D3D12 on Windows / Vulkan on Linux
     c.ar_option       = AspectRatio::Original;                // BASELINE: plain 4:3 first, widescreen after
+#ifdef __EMSCRIPTEN__
+    // A page is widescreen: Expand fills the browser's window, the game's culling widened with it (bar_frustum.cpp) and
+    // the racing HUD anchored to its edges (hr_option above).
+    c.ar_option       = AspectRatio::Expand;
+    // A page leaves MSAA off: a laptop's integrated graphics can't afford it at the canvas's resolution in a browser.
+    c.msaa_option     = Antialiasing::None;
+#else
     c.msaa_option     = Antialiasing::MSAA4X;                  // seam fix 2A: 4x MSAA adds edge coverage, softening coplanar seams
+#endif
     c.rr_option       = RefreshRate::Display;                 // HIGH-FPS: interpolate up to the monitor rate
     c.hpfb_option     = HighPrecisionFramebuffer::Auto;
     c.rr_manual_value = 144;                                  // only consulted when rr_option == Manual

@@ -1,0 +1,29 @@
+# The files where this game's own patches (scripts/dependency-patches) or the commits its submodules pin change the
+# same lines as N64Recomp-browser's web support: <project> <path in the project>. tools/build_web.sh leaves each out of
+# N64Recomp-browser's patch for its project and applies web/patches/<project>.patch in its place, the web's change to
+# these files merged by hand on top of the game's. The web's later changes to them are merged in by apply.cmake --since
+# from the commit below; one that meets the game's own lines stops the build, for another merge by hand and this
+# commit moved.
+#
+# rt64 (after web/patches/rt64-upstream.patch): the game's present queue keeps its pause screen's roll transition
+# beside the web's pacing; its external pause (the game's own pause menu) sits beside the web's late RAM copies in
+# updateScreen(); its full-height targets for a pair spanning most of the screen come after the web's viewport height,
+# and its Framebuffer objects take the height from between the two; its present fill modes (pillarbox, crop, stretch)
+# give the scale the web rounds to whole pixels.
+# N64ModernRuntime: the game's VI thread queues its boot's dummy workload and the screen update under the message
+# mutex, before the VI's state moves on; with ULTRAMODERN_SCREEN_UPDATE_AFTER_VI (on in a page) the update comes after it,
+# as the web's does.
+# RecompFrontend (the game's own copy, in its tree): the game's rumble goes through its send_controller_rumble, the
+# page's through web_rumble. Its get_n64_input reads a controller player's keyboard only if asked (include_keyboard),
+# and the web's rule of which players read the keyboard (player_reads_profile) comes before. Its controls page keeps its
+# own profile index (set_current_profile_index) after the web's switch out of single-player mode, and shows the keyboard
+# toggle and keys by the web's controller_player_has_keyboard.
+# merged from N64Recomp-browser 6078d43618f7dc1fe5daa86f456b724997893229
+rt64 src/hle/rt64_present_queue.h
+rt64 src/hle/rt64_state.cpp
+rt64 src/hle/rt64_workload_queue.cpp
+rt64 src/render/rt64_vi_renderer.cpp
+N64ModernRuntime ultramodern/src/events.cpp
+RecompFrontend recompinput/src/input_state.cpp
+RecompFrontend recompinput/src/profiles.cpp
+RecompFrontend recompui/src/config/ui_config_page_controls.cpp

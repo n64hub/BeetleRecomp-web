@@ -1,0 +1,513 @@
+diff --git a/recompinput/src/input_state.cpp b/recompinput/src/input_state.cpp
+--- a/recompinput/src/input_state.cpp
++++ b/recompinput/src/input_state.cpp
+@@ -32,6 +32,35 @@
+     InputArray<bool> rumble_active{};
+ } InputState;
+ 
++#ifdef RECOMPINPUT_PADS_IN_ORDER
++// RECOMPINPUT_PADS_IN_ORDER, for a game of several players: until players are assigned, each controller plays a port of
++// its own, in the order they were connected (poll_inputs), where single-player mode gives every controller to every
++// port, so a second pad moved player 1 too and a menu that each player works with a pad of their own (a character
++// select) had every cursor move at once. Its buttons, sticks, gyro and rumble are that port's alone; the keyboard plays
++// port 1 (profiles.cpp). Assigned players play as before. The caller holds controllers_mutex.
++static SDL_GameController* controller_for_port(int controller_num) {
++    if (controller_num < 0 || (size_t)controller_num >= InputState.detected_controllers.size()) {
++        return nullptr;
++    }
++    return InputState.detected_controllers[controller_num];
++}
++#endif
++
++// The controllers SDL's events have opened, not detected_controllers, which only poll_inputs fills: a game asks which
++// ports have a controller (osContInit) as it boots, before its first read of them, and the count there was 0, so a
++// game that counts its players once at boot offered one whatever was plugged in.
++size_t recompinput::get_detected_controller_count() {
++    std::lock_guard lock{ InputState.controllers_mutex };
++    size_t count = 0;
++    for (const auto& [id, state] : InputState.controller_states) {
++        (void)id;
++        if (state.controller != nullptr) {
++            count++;
++        }
++    }
++    return count;
++}
++
+ void recompinput::poll_inputs() {
+     InputState.keys = SDL_GetKeyboardState(&InputState.numkeys);
+     InputState.keymod = SDL_GetModState();
+@@ -52,6 +81,14 @@
+                 InputState.detected_controllers.push_back(controller);
+             }
+         }
++#ifdef RECOMPINPUT_PADS_IN_ORDER
++        // In the order they were connected: SDL's joystick instance ids rise with each connection.
++        std::sort(InputState.detected_controllers.begin(), InputState.detected_controllers.end(),
++            [](SDL_GameController* a, SDL_GameController* b) {
++                return SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(a)) <
++                    SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(b));
++            });
++#endif
+     }
+ 
+     // Read the deltas while resetting them to zero.
+@@ -69,6 +106,95 @@
+     }
+ }
+ 
++#ifdef __EMSCRIPTEN__
++#include <chrono>
++#include <cstring>
++#include <emscripten.h>
++#include <emscripten/html5.h>
++#include <emscripten/threading.h>
++
++// Emscripten's SDL2 has no rumble (SDL_JoystickRumble is unsupported there), so on a page it goes to the browser's
++// Gamepad API, on the main thread where that is: vibrationActuator.playEffect("dual-rumble") on the gamepad behind
++// the joystick, its weak (high frequency) motor as SDL_JoystickRumble's is driven.
++EM_JS(void, recompinput_web_rumble, (int index, int strength), {
++    const pad = navigator.getGamepads ? navigator.getGamepads()[index] : null;
++    const actuator = pad && pad.vibrationActuator;
++    if (actuator && strength > 0) {
++        actuator.playEffect('dual-rumble', { duration: 5000, strongMagnitude: 0, weakMagnitude: strength / 65535 })
++            .catch(() => {});
++    } else if (actuator) {
++        actuator.reset().catch(() => {});
++    }
++});
++
++// SDL's own, which names a joystick on Emscripten: SDL_CreateJoystickName(0, 0, NULL, id) of the browser gamepad's id.
++extern "C" char *SDL_CreateJoystickName(Uint16 vendor, Uint16 product, const char *vendor_name, const char *product_name);
++
++// The browser's index of the gamepad behind a joystick, or -1. SDL keeps it to itself, and its name for the joystick
++// isn't the gamepad's id: the id comes through Emscripten's EmscriptenGamepadEvent cut to 63 bytes, which Chrome's ids
++// for other than XInput pads run past ("DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)"),
++// and SDL renames it (a maker's name shortened, "HORI CO.,LTD" to "HORI", or cut off the front when it shows again
++// later). So each gamepad's id as Emscripten gives it is named the way SDL named the joystick, and the gamepad is the
++// k-th of that name in the browser's order, for the k-th joystick of the name in the order SDL saw them connect
++// (instance id).
++static int web_gamepad_index(SDL_Joystick* joystick) {
++    const char *name = SDL_JoystickName(joystick);
++    SDL_JoystickID id = SDL_JoystickInstanceID(joystick);
++    if (name == nullptr) {
++        return -1;
++    }
++    if (emscripten_sample_gamepad_data() != EMSCRIPTEN_RESULT_SUCCESS) {
++        return -1;
++    }
++    int rank = 0;
++    for (int i = 0; i < SDL_NumJoysticks(); i++) {
++        const char *other = SDL_JoystickNameForIndex(i);
++        rank += SDL_JoystickGetDeviceInstanceID(i) < id && other != nullptr && strcmp(other, name) == 0;
++    }
++    EmscriptenGamepadEvent pad;
++    for (int i = 0; i < emscripten_get_num_gamepads(); i++) {
++        if (emscripten_get_gamepad_status(i, &pad) != EMSCRIPTEN_RESULT_SUCCESS) {
++            continue;
++        }
++        char *pad_name = SDL_CreateJoystickName(0, 0, nullptr, pad.id);
++        bool same = pad_name != nullptr && strcmp(pad_name, name) == 0;
++        SDL_free(pad_name);
++        if (same && rank-- == 0) {
++            return i;
++        }
++    }
++    return -1;
++}
++
++// Called every retrace for every pad. Only a change of strength goes to the page, and, since a browser ends an effect
++// after 5 seconds at most, a rumble still on once a second. The gamepad is found as the joystick is first rumbled (a
++// reset, as it is opened) and kept: a browser's index for a gamepad stays while it is connected.
++static int web_rumble(SDL_Joystick* joystick, uint16_t strength) {
++    struct Played {
++        int index = -1;
++        uint16_t strength = 0;
++        std::chrono::steady_clock::time_point at;
++    };
++    static std::unordered_map<SDL_JoystickID, Played> played;
++    SDL_JoystickID id = SDL_JoystickInstanceID(joystick);
++    auto now = std::chrono::steady_clock::now();
++    auto [it, added] = played.try_emplace(id);
++    Played &p = it->second;
++    if (!added && strength == p.strength && (strength == 0 || now - p.at < std::chrono::seconds(1))) {
++        return 0;
++    }
++    p.strength = strength;
++    p.at = now;
++    if (p.index < 0) {
++        p.index = web_gamepad_index(joystick);
++    }
++    if (p.index >= 0) {
++        emscripten_async_run_in_main_runtime_thread(EM_FUNC_SIG_VII, recompinput_web_rumble, p.index, int(strength));
++    }
++    return 0;
++}
++#endif
++
+ void recompinput::set_rumble(int controller_num, bool on) {
+     InputState.rumble_active[controller_num] = on;
+ }
+@@ -89,7 +215,11 @@
+         if (state.rumble_failed) {
+            return;
+         }
++#ifdef __EMSCRIPTEN__
++        if (web_rumble(joystick, rumble_strength) != 0) {
++#else
+         if (!send_controller_rumble(controller, rumble_strength, rumble_strength, duration)) {
++#endif
+             state.rumble_failed = true;
+         }
+     };
+@@ -99,6 +229,11 @@
+         return;
+     }
+     size_t rumbles_to_run = recompinput::players::is_single_player_mode() ? 1 : recompinput::players::get_number_of_assigned_players();
++#ifdef RECOMPINPUT_PADS_IN_ORDER
++    if (recompinput::players::is_single_player_mode()) {
++        rumbles_to_run = recompinput::get_detected_controller_count();
++    }
++#endif
+     if (rumbles_to_run > InputState.cur_rumble.size()) {
+         rumbles_to_run = InputState.cur_rumble.size();
+     }
+@@ -120,9 +255,15 @@
+         {
+             std::lock_guard lock{ InputState.controllers_mutex };
+             if (recompinput::players::is_single_player_mode()) {
++#ifdef RECOMPINPUT_PADS_IN_ORDER
++                if (SDL_GameController* controller = controller_for_port((int)i)) {
++                    do_rumble(controller, rumble_strength, duration);
++                }
++#else
+                 for (const auto &controller : InputState.detected_controllers) {
+                     do_rumble(controller, rumble_strength, duration);
+                 }
++#endif
+             }
+             else {
+                 auto &player = recompinput::players::get_player(i);
+@@ -141,9 +282,15 @@
+         {
+             std::lock_guard lock{ InputState.controllers_mutex };
+             if (recompinput::players::is_single_player_mode()) {
++#ifdef RECOMPINPUT_PADS_IN_ORDER
++                if (SDL_GameController* controller = controller_for_port(controller_num)) {
++                    ret |= SDL_GameControllerGetButton(controller, button);
++                }
++#else
+                 for (const auto &controller : InputState.detected_controllers) {
+                     ret |= SDL_GameControllerGetButton(controller, button);
+                 }
++#endif
+             }
+             else {
+                 auto &player = recompinput::players::get_player(controller_num);
+@@ -184,12 +331,18 @@
+ 
+             std::lock_guard lock{ InputState.controllers_mutex };
+             if (recompinput::players::is_single_player_mode()) {
++#ifdef RECOMPINPUT_PADS_IN_ORDER
++                if (SDL_GameController* controller = controller_for_port(controller_num)) {
++                    ret = gather_axis_state(controller);
++                }
++#else
+                 for (SDL_GameController *controller : InputState.detected_controllers) {
+                     float controller_state = gather_axis_state(controller);
+                     if (fabsf(controller_state) > fabsf(ret)) {
+                         ret = controller_state;
+                     }
+                 }
++#endif
+             }
+             else {
+                 auto &player = recompinput::players::get_player(controller_num);
+@@ -283,11 +436,17 @@
+     if (players::is_single_player_mode()) {
+         {
+             std::lock_guard lock{ InputState.controllers_mutex };
++#ifdef RECOMPINPUT_PADS_IN_ORDER
++            if (SDL_GameController* controller = controller_for_port(controller_num)) {
++                cur_rotation_delta = InputState.controller_states[SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))].rotation_delta;
++            }
++#else
+             for (const auto &state_pair : InputState.controller_states) {
+                 const ControllerState &state = state_pair.second;
+                 cur_rotation_delta[0] += state.rotation_delta[0];
+                 cur_rotation_delta[1] += state.rotation_delta[1];
+             }
++#endif
+         }
+ 
+     } else {
+diff --git a/recompinput/src/profiles.cpp b/recompinput/src/profiles.cpp
+--- a/recompinput/src/profiles.cpp
++++ b/recompinput/src/profiles.cpp
+@@ -197,13 +197,33 @@
+         return profiles::get_input_profile_by_key(profiles::get_mp_keyboard_profile_key(player_index));
+     }
+ 
++#ifdef RECOMPINPUT_SINGLE_PLAYER_UNTIL_ASSIGNED
++    // Whether a player is the first one, in player order, assigned the keyboard. Assign players gives the keyboard to more
++    // players with the button it shows once one has it, and they share it, so only the first one's own profile starts from
++    // single-player mode's keys and resets to the defaults: a later one's starts with none, as upstream's does.
++    static bool is_first_keyboard_player(int player_index) {
++        for (int i = 0; i < player_index; i++) {
++            if (players::get_player_input_device(i) == InputDevice::Keyboard) {
++                return false;
++            }
++        }
++        return players::get_player_input_device(player_index) == InputDevice::Keyboard;
++    }
++#endif
++
+     void profiles::reset_profile_bindings(int profile_index, InputDevice device) {
+         // multiplayer keyboard profiles just get cleared completely because of overlapping key bindings.
+         bool is_multiplayer_kb = false;
+         if (device == InputDevice::Keyboard) {
+             for (size_t i = 0; i < recompinput::players::get_number_of_assigned_players(); i++) {
+                 if (get_mp_keyboard_profile_index(i) == profile_index) {
++#ifdef RECOMPINPUT_SINGLE_PLAYER_UNTIL_ASSIGNED
++                    // But the first keyboard player's gets the default keys, which no other player's overlap: cleared,
++                    // the only player on the keyboard had no keys at all.
++                    is_multiplayer_kb = !is_first_keyboard_player((int)i);
++#else
+                     is_multiplayer_kb = true;
++#endif
+                     break;
+                 }
+             }
+@@ -397,6 +417,28 @@
+             break;
+         case InputDevice::Keyboard:
+             players_input_profile_indices[player_index].second = profile_index;
++#ifdef RECOMPINPUT_SINGLE_PLAYER_UNTIL_ASSIGNED
++            // The first keyboard player's own profile with no keys bound (upstream makes a new one with none) gets
++            // single-player mode's, which they played with until players were assigned.
++            if (profile_index >= 0 && profile_index == get_mp_keyboard_profile_index(player_index) &&
++                is_first_keyboard_player(player_index)) {
++                int sp_profile_index = get_sp_keyboard_profile_index();
++                bool bound = false;
++                for (size_t input = 0; input < static_cast<size_t>(GameInput::COUNT); input++) {
++                    for (size_t binding_index = 0; binding_index < num_bindings_per_input; binding_index++) {
++                        bound |= get_input_binding(profile_index, static_cast<GameInput>(input), binding_index) != InputField{};
++                    }
++                }
++                if (!bound && sp_profile_index >= 0) {
++                    for (size_t input = 0; input < static_cast<size_t>(GameInput::COUNT); input++) {
++                        for (size_t binding_index = 0; binding_index < num_bindings_per_input; binding_index++) {
++                            set_input_binding(profile_index, static_cast<GameInput>(input), binding_index,
++                                get_input_binding(sp_profile_index, static_cast<GameInput>(input), binding_index));
++                        }
++                    }
++                }
++            }
++#endif
+             break;
+         default:
+             assert(false && "Unknown input device.");
+@@ -599,6 +641,50 @@
+         return "SERIAL_" + guid.serial + "_VID_" + std::to_string(guid.vendor) + "_PID_" + std::to_string(guid.product) +"_VERSION_" + std::to_string(guid.version) +"_CRC16_" + std::to_string(guid.crc16);
+     }
+ 
++#ifdef RECOMPINPUT_SINGLE_PLAYER_UNTIL_ASSIGNED
++    // Whether a player reads one of their two profiles: a keyboard player reads no controller, and a controller player
++    // no keyboard, but player 1 while nobody has it. Every player starts out on single-player mode's keys (profile 0,
++    // the same keys, for players 2-4, in both of their slots), so upstream's keyboard played every controller player.
++    static bool player_reads_profile(int player_index, int profile_index) {
++        if (players::is_single_player_mode()) {
++#ifdef RECOMPINPUT_PADS_IN_ORDER
++            // Each port its own controller (input_state.cpp), and the keyboard port 1.
++            return input_profiles[profile_index].device != InputDevice::Keyboard || player_index == 0;
++#else
++            return true;
++#endif
++        }
++        InputDevice device = players::get_player_input_device(player_index);
++        if (input_profiles[profile_index].device != InputDevice::Keyboard) {
++            return device == InputDevice::Controller;
++        }
++        if (profile_index != players_input_profile_indices[player_index].second) {
++            return false;
++        }
++        if (device == InputDevice::Keyboard) {
++            return true;
++        }
++        for (size_t i = 0; i < players::get_number_of_assigned_players(); i++) {
++            if (players::get_player_input_device((int)i) == InputDevice::Keyboard) {
++                return false;
++            }
++        }
++        return player_index == 0;
++    }
++#endif
++
++    bool profiles::controller_player_has_keyboard(int player_index) {
++#ifdef RECOMPINPUT_SINGLE_PLAYER_UNTIL_ASSIGNED
++        if (players::is_single_player_mode() || players::get_player_input_device(player_index) != InputDevice::Controller) {
++            return false;
++        }
++        int profile_index = players_input_profile_indices[player_index].second;
++        return profile_index >= 0 && player_reads_profile(player_index, profile_index);
++#else
++        return false;
++#endif
++    }
++
+     bool profiles::get_n64_input(int player_index, uint16_t* buttons_out, float* x_out, float* y_out, bool include_keyboard) {
+         uint16_t cur_buttons = 0;
+         float cur_x = 0.0f;
+@@ -632,6 +718,11 @@
+                 if (profile_index < 0) {
+                     return;
+                 }
++#ifdef RECOMPINPUT_SINGLE_PLAYER_UNTIL_ASSIGNED
++                if (!player_reads_profile(player_index, profile_index)) {
++                    return;
++                }
++#endif
+ 
+                 const input_mapping_array &mappings = input_profiles[profile_index].mappings;
+                 for (size_t i = 0; i < n64_button_values.size(); i++) {
+@@ -643,6 +734,11 @@
+                 if (profile_index < 0) {
+                     return;
+                 }
++#ifdef RECOMPINPUT_SINGLE_PLAYER_UNTIL_ASSIGNED
++                if (!player_reads_profile(player_index, profile_index)) {
++                    return;
++                }
++#endif
+ 
+                 const input_mapping_array &mappings = input_profiles[profile_index].mappings;
+                 cur_x += read_analog(mappings[(size_t)GameInput::X_AXIS_POS]) - read_analog(mappings[(size_t)GameInput::X_AXIS_NEG]);
+@@ -667,6 +763,21 @@
+     }
+ 
+     static void add_input_bindings(json& out, int profile_index, GameInput input) {
++#ifdef __EMSCRIPTEN__
++        // A page's build changes under its player at every update, so only the bindings the player changed are saved:
++        // an input left at its defaults follows the defaults of the build that reads the file (load_input_device_from_json
++        // gives an input the file leaves out its defaults), not those of the build that first wrote it.
++        const std::vector<InputField>& defaults =
++            recompinput::get_default_mapping_for_input(profiles::get_input_profile_device(profile_index), input);
++        bool changed = false;
++        for (size_t binding_index = 0; binding_index < recompinput::num_bindings_per_input; binding_index++) {
++            InputField default_field = binding_index < defaults.size() ? defaults[binding_index] : InputField{};
++            changed |= profiles::get_input_binding(profile_index, input, binding_index) != default_field;
++        }
++        if (!changed) {
++            return;
++        }
++#endif
+         const std::string& input_name = recompinput::get_game_input_enum_name(input);
+         json& out_array = out[input_name];
+         out_array = json::array();
+@@ -693,6 +804,9 @@
+             profile["device"] = profiles::get_input_profile_device(i);
+             profile["custom"] = profiles::is_input_profile_custom(i);
+             profile["mappings"] = json();
++#ifdef __EMSCRIPTEN__
++            profile["mappings"] = json::object();
++#endif
+             
+             for (int j = 0; j < (int)(GameInput::COUNT); j++) {
+                 add_input_bindings(profile["mappings"], i, static_cast<GameInput>(j));
+diff --git a/recompui/src/config/ui_config_page_controls.cpp b/recompui/src/config/ui_config_page_controls.cpp
+--- a/recompui/src/config/ui_config_page_controls.cpp
++++ b/recompui/src/config/ui_config_page_controls.cpp
+@@ -177,9 +177,7 @@
+ ConfigPageControls::ConfigPageControls(ResourceId rid, Element *parent) : ConfigPage(rid, parent) {
+     controls_page = this;
+ 
+-    multiplayer_enabled = recompinput::players::is_single_player_mode() == false;
+-    this->max_num_players = multiplayer_enabled ? recompinput::players::get_max_number_of_players() : 1;
+-    multiplayer_view_mappings = !multiplayer_enabled;
++    update_multiplayer_enabled();
+ 
+     set_selected_player(selected_player);
+ 
+@@ -260,7 +258,19 @@
+     update_index++;
+ }
+ 
++// Single-player mode can change while the page exists: a game that plays as it until players are assigned
++// (recompinput's RECOMPINPUT_SINGLE_PLAYER_UNTIL_ASSIGNED) leaves it when they are.
++void ConfigPageControls::update_multiplayer_enabled() {
++    multiplayer_enabled = recompinput::players::is_single_player_mode() == false;
++    this->max_num_players = multiplayer_enabled ? recompinput::players::get_max_number_of_players() : 1;
++    multiplayer_view_mappings = !multiplayer_enabled;
++}
++
+ void ConfigPageControls::render_all() {
++    if (multiplayer_enabled != !recompinput::players::is_single_player_mode()) {
++        update_multiplayer_enabled();
++        selected_player = 0;
++    }
+     set_current_profile_index();
+     render_header();
+     render_body();
+@@ -280,10 +290,14 @@
+ void ConfigPageControls::render_header() {
+     // Header attempts to not re-render elements if not necessary, instead swapping visibility / updating text.
+ 
+-    if (!multiplayer_enabled) {
++    // A game that allows more players shows Assign players in single-player mode too.
++    bool can_assign_players = recompinput::players::get_max_number_of_players() > 1;
++    if (!multiplayer_enabled && !can_assign_players) {
+         hide_header();
+         return;
+     }
++    // The player cards show the header's Assign players, editing a player's profile its Go back.
++    bool editing_profile = multiplayer_enabled && multiplayer_view_mappings;
+ 
+     recompui::ContextId context = get_current_context();
+     add_header();
+@@ -293,7 +307,7 @@
+     {
+         auto header_left = header->get_left();
+ 
+-        if (multiplayer_view_mappings) {
++        if (editing_profile) {
+             std::string profile_name = "Editing: " + recompinput::profiles::get_input_profile_name(selected_profile_index);
+             if (header_elements.left.profile_name_label == nullptr) {
+                 header_elements.left.profile_name_label = context.create_element<Label>(
+@@ -316,7 +330,7 @@
+     {
+         auto header_right = header->get_right();
+ 
+-        if (multiplayer_view_mappings) {
++        if (editing_profile) {
+             if (header_elements.right.go_back_button == nullptr) {
+                 header_elements.right.go_back_button = context.create_element<Button>(header_right, "Go back", ButtonStyle::Tertiary);
+                 header_elements.right.go_back_button->add_pressed_callback([this]() {
+@@ -656,10 +670,9 @@
+     {
+         auto footer_left = footer->get_left();
+         footer_left->clear_children();
+-        const bool has_keyboard_fallback = multiplayer_enabled &&
+-            recompinput::players::get_player_input_device(selected_player) == recompinput::InputDevice::Controller &&
+-            recompinput::profiles::get_input_profile_for_player(selected_player, recompinput::InputDevice::Keyboard) >= 0;
+-        if (!multiplayer_enabled || has_keyboard_fallback) {
++        // The toggle shows too for a controller player who also has the keyboard (recompinput's
++        // controller_player_has_keyboard), whose keyboard keys could otherwise not be seen or changed.
++        if (!multiplayer_enabled || recompinput::profiles::controller_player_has_keyboard(selected_player)) {
+             keyboard_toggle = context.create_element<IconToggle>(footer_left, "icons/Cont.svg", "icons/Keyboard.svg", ToggleSize::Large);
+             keyboard_toggle->set_checked(single_player_show_keyboard_mappings);
+             keyboard_toggle->add_checked_callback([this](bool checked) {
+@@ -828,11 +841,10 @@
+ 
+ recompinput::InputDevice ConfigPageControls::get_player_input_device() {
+     if (multiplayer_enabled) {
+-        const auto device = recompinput::players::get_player_input_device(this->selected_player);
+-        if (device == recompinput::InputDevice::Controller && single_player_show_keyboard_mappings &&
+-            recompinput::profiles::get_input_profile_for_player(selected_player, recompinput::InputDevice::Keyboard) >= 0)
++        if (single_player_show_keyboard_mappings && recompinput::profiles::controller_player_has_keyboard(this->selected_player)) {
+             return recompinput::InputDevice::Keyboard;
+-        return device;
++        }
++        return recompinput::players::get_player_input_device(this->selected_player);
+     }
+ 
+     return single_player_show_keyboard_mappings

@@ -60,18 +60,41 @@ if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
 endif()
 
+# The web page (tools/build_web.sh, N64Recomp-browser's README): threads, wasm exceptions, SIMD (hlslpp's wasm backend
+# and the auto-vectorizer) and tail calls (recomp.h's RECOMP_TAIL_CALL in the recompiled code) for every target.
+# xxHash's NEON path through Emscripten's arm_neon.h doesn't compile in C++.
+if (EMSCRIPTEN)
+    add_compile_options(-pthread -fwasm-exceptions -msimd128 -mtail-call "-DXXH_HAS_INCLUDE(x)=0")
+    add_link_options(-pthread -fwasm-exceptions -mtail-call)
+    # BeetleRecomp.html.symbols beside the page, the wasm's function names by index, for reading a crash's stack (the
+    # page itself has none). It isn't published.
+    add_link_options(--emit-symbol-map)
+    # ccache when it is on PATH.
+    include(${CMAKE_SOURCE_DIR}/lib/N64Recomp-browser/frontend/build_speed.cmake)
+    # The shaders the page specializes at build time: the boot's before the game starts, each section's when the game
+    # first draws there (web/rt64_shaders.txt says how it was recorded).
+    if (EXISTS ${CMAKE_SOURCE_DIR}/web/rt64_shaders.txt)
+        set(RT64_PREBUILT_SHADER_LIST ${CMAKE_SOURCE_DIR}/web/rt64_shaders.txt)
+    else()
+        # A build configured before the list was recorded configures again once it is there.
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/web)
+    endif()
+endif()
+
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # ---- RT64 first: defines the `rt64` target + build_*_shader() helpers ----
 set(RT64_STATIC TRUE)
-set(RT64_SDL_WINDOW_VULKAN TRUE)
+if (NOT EMSCRIPTEN)
+    set(RT64_SDL_WINDOW_VULKAN TRUE)
+endif()
 # Linux: every translation unit that includes plume_render_interface_types.h must agree that
 # RenderWindow is an SDL_Window*. RT64 defines these for its own directory only, so RecompFrontend's
 # recompui compiled against the X11 struct and failed on `appCore.window = window_handle`
 # (rt64_render_context.cpp). Defined at this scope, before any library is added -- the fix Hybrid
 # Heaven: Recompiled uses.
-if (UNIX AND NOT APPLE)
+if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
     add_compile_definitions(PLUME_SDL_VULKAN_ENABLED RT64_SDL_WINDOW_VULKAN)
 endif()
 add_compile_definitions(HLSL_CPU)
@@ -98,6 +121,11 @@ endif()
 # ---- N64ModernRuntime: provides the `librecomp` and `ultramodern` targets ----
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime)
 
+# The page: N64Recomp-browser's frontend/ (the page shell, sound, the cross-origin service worker).
+if (EMSCRIPTEN)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/lib/N64Recomp-browser/frontend ${CMAKE_BINARY_DIR}/web_frontend)
+endif()
+
 # ---- RecompFrontend: recompui (launcher/settings/mods, built on RmlUi) + recompinput (SDL2 input,
 # controller profiles). It consumes N64ModernRuntime and RT64 by PATH rather than by target, so it
 # reuses the very same runtime and renderer this port already builds. Must come after
@@ -115,7 +143,7 @@ if (BEETLE_ENABLE_FRONTEND)
         FetchContent_Declare(sdl2
             URL https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-devel-${SDL2_VERSION}-VC.zip)
         FetchContent_MakeAvailable(sdl2)
-    else()
+    elseif (NOT EMSCRIPTEN)
         find_package(SDL2 REQUIRED)
     endif()
 
@@ -133,7 +161,8 @@ if (BEETLE_ENABLE_FRONTEND)
         set(DXC "${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc.exe")
     elseif (WIN32)
         set(DXC "LD_LIBRARY_PATH=${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/x64" "${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc-linux")
-    elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
+    elseif (CMAKE_SYSTEM_NAME MATCHES "Linux" OR EMSCRIPTEN)
+        # On the web DXC runs on the machine that builds, which isn't the 32-bit target.
         set(DXC "LD_LIBRARY_PATH=${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/x64" "${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc-linux")
     elseif (APPLE)
         beetle_macos_shader_compiler(DXC "${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/dxc" "${CMAKE_HOST_SYSTEM_PROCESSOR}")
@@ -176,6 +205,10 @@ target_include_directories(RecompiledFuncs PRIVATE ${RECOMP_INCLUDES})
 file(GLOB FUNC_C_SOURCES   CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.c)
 file(GLOB FUNC_CXX_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.cpp)
 target_sources(RecompiledFuncs PRIVATE ${FUNC_C_SOURCES} ${FUNC_CXX_SOURCES})
+# wasm-ld turns a call through a wrong implicit declaration into a trap, so on the web it is an error instead.
+if (EMSCRIPTEN)
+    target_compile_options(RecompiledFuncs PRIVATE -Werror=implicit-function-declaration)
+endif()
 
 # ---------------------------------------------------------------------------
 # PatchesLib — the recompiled C-to-MIPS patches that override or hook game functions.
@@ -354,6 +387,18 @@ if (APPLE)
         MACOSX_BUNDLE_BUNDLE_NAME "BeetleRecomp"
         MACOSX_BUNDLE_ICON_FILE "BeetleRecomp.icns"
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/cmake/BeetleRecomp-Info.plist.in")
+endif()
+
+# ---- The web page: the assets and fonts the desktop build copies beside it, preloaded where recompui looks ----
+if (EMSCRIPTEN)
+    n64recomp_browser_frontend_page(BeetleRecomp)
+    set(BEETLE_RMLUI_FONTS "${CMAKE_SOURCE_DIR}/lib/RecompFrontend/recompui/lib/RmlUi/Samples/assets")
+    target_link_options(BeetleRecomp PRIVATE
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets/ui@/assets"
+        "SHELL:--preload-file ${BEETLE_RMLUI_FONTS}/LatoLatin-Regular.ttf@/assets/LatoLatin-Regular.ttf"
+        "SHELL:--preload-file ${BEETLE_RMLUI_FONTS}/LatoLatin-Bold.ttf@/assets/LatoLatin-Bold.ttf"
+        "SHELL:--preload-file ${BEETLE_RMLUI_FONTS}/LatoLatin-Italic.ttf@/assets/LatoLatin-Italic.ttf"
+        "SHELL:--preload-file ${BEETLE_RMLUI_FONTS}/NotoEmoji-Regular.ttf@/assets/NotoEmoji-Regular.ttf")
 endif()
 
 # ---- Link the runtime + generated code ----
