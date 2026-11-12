@@ -969,6 +969,7 @@ bar::frontend::create_render_context(uint8_t* rdram,
     // glare's Z-buffer samples, the car's reflection, the menus' film-roll transitions), but with the copy a list late
     // (set_render_to_ram_late) the page never got from the menus into a race and ran out of memory (BUILDING.md, The
     // web page).
+    recompui::renderer::set_render_to_ram_late(true);  // TEST: late copy
 #else
     constexpr bool rt64_developer_mode = true;
 #endif
