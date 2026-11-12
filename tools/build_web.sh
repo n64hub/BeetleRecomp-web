@@ -120,6 +120,8 @@ if [[ "$(cat $prep/web-patched 2> /dev/null)" != "$stamp" ]] || git -C lib/rt64 
         [[ -z "$skip" ]] || cmake -P $browser/patches/apply.cmake "$name" "$checkout" --since "$merged_from" $skip
     done <<< "$web_patches"
     git -C lib/rt64 apply "$root/scripts/dependency-patches/rt64-dl-probe.patch"  # TEST
+    git -C lib/rt64 apply "$root/scripts/dependency-patches/rt64-landing-probe.patch"  # TEST
+    git -C lib/N64ModernRuntime apply "$root/scripts/dependency-patches/N64ModernRuntime-task-probe.patch"  # TEST
     echo "$stamp" > $prep/web-patched
 fi
 

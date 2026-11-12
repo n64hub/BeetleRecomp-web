@@ -1,0 +1,18 @@
+--- a/src/hle/rt64_state.cpp	2026-11-12 20:34:02.433483300 +0100
++++ b/src/hle/rt64_state.cpp	2026-11-12 20:34:33.470529300 +0100
+@@ -967,6 +967,15 @@
+                 continue;
+             }
+ 
++            // TEST: each range a late copy lands in, the first time.
++            {
++                static std::vector<std::pair<uint32_t, uint32_t>> probeSeen;
++                const std::pair<uint32_t, uint32_t> range(image.start, uint32_t(image.start + image.words.size() * 4));
++                if (std::find(probeSeen.begin(), probeSeen.end(), range) == probeSeen.end()) {
++                    probeSeen.push_back(range);
++                    fprintf(stderr, "[probe] a late copy lands in 0x%08X-0x%08X (framebuffer 0x%08X, rows %u-%u of %u)\n", range.first, range.second, copy.address, copy.rowStart, copy.rowEnd, copy.rowWidth);
++                }
++            }
+             landedWords = image.words;
+             fb->copyNativeToRAM(reinterpret_cast<uint8_t *>(landedWords.data()) + (fb->addressStart - image.start), copy.rowWidth, copy.rowStart, copy.rowEnd);
+             for (size_t i = 0; i < landedWords.size(); i++) {

@@ -1,0 +1,36 @@
+--- a/ultramodern/src/events.cpp	2026-11-12 20:34:00.704166700 +0100
++++ b/ultramodern/src/events.cpp	2026-11-12 20:34:33.468536200 +0100
+@@ -10,6 +10,9 @@
+ #include <mutex>
+ #include <queue>
+ #include <cstring>
++#ifdef __EMSCRIPTEN__
++#include <emscripten.h>
++#endif
+ 
+ #include "blockingconcurrentqueue.h"
+ 
+@@ -858,6 +861,23 @@
+ 
+     // Send gfx tasks to the graphics action queue
+     if (task->t.type == M_GFXTASK) {
++        // TEST: a graphics task whose display list isn't in RDRAM.
++        if (((uint32_t(task->t.data_ptr) & 0x1FFFFFFF) == 0) || ((uint32_t(task->t.data_ptr) & 0x1FFFFFFF) >= 0x800000)) {
++            static int logged = 0;
++            if (logged++ < 4) {
++                const uint32_t *words = reinterpret_cast<const uint32_t *>(task);
++                fprintf(stderr, "[probe] gfx task at 0x%08X with data_ptr 0x%08X:", uint32_t(task_), uint32_t(task->t.data_ptr));
++                for (int w = 0; w < 16; w++) {
++                    fprintf(stderr, " %08X", words[w]);
++                }
++                fprintf(stderr, "\n");
++#ifdef __EMSCRIPTEN__
++                static char stack[8192];
++                emscripten_get_callstack(EM_LOG_C_STACK, stack, sizeof(stack));
++                fprintf(stderr, "%s\n", stack);
++#endif
++            }
++        }
+         events_context.action_queue.enqueue(SpTaskAction{ *task });
+     }
+     // Set all other tasks as the RSP task
