@@ -323,6 +323,24 @@ require "$(count_in_funcs 'status |= PFS_INITIALIZED')" 2 \
 
 # Haunted-door sound-type substitution omitted: original hardware behavior is retained.
 
+# (J) The audio manager's teardown (func_uvaudiomgr_rom_004008C0, .uvaudiomgr_rom+0x8C0) destroys the audio
+# thread, then frees the heap holding the audio task the scheduler still has, queued or on the RSP; the RSP's
+# done comes later here than on the console, so the next module's init zeroed the task first and _uvScDoneAud
+# sent to a NULL msgQ. Right after its osDestroyThread, wait until the scheduler has retired the task
+# (src/main/bar_audio_teardown.cpp says why and how).
+teardown_fix='    { extern void bar_retire_audio_tasks(uint8_t* rdram); bar_retire_audio_tasks(rdram); }  // BAR FIX: audio teardown waits out the scheduler'"'"'s audio task (rule J)'
+for f in "$RF"/*.c; do
+    if grep -Fq "RECOMP_FUNC void ${AUDIO_TEARDOWN}(" "$f" && ! grep -q 'BAR FIX: audio teardown waits' "$f"; then
+        awk -v fix="$teardown_fix" -v teardown="$AUDIO_TEARDOWN" '
+            $0 ~ ("^RECOMP_FUNC void " teardown "\\(") { armed = 1 }
+            { print }
+            armed && /^[[:space:]]*osDestroyThread_recomp\(rdram, ctx\);[[:space:]]*$/ { print fix; armed = 0 }
+        ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+    fi
+done
+require "$(count_in_funcs 'BAR FIX: audio teardown waits')" 1 \
+    "audio manager teardown waits out the scheduler's audio task" "${AUDIO_TEARDOWN}: osDestroyThread_recomp(rdram, ctx);"
+
 # ---------------------------------------------------------------------------------------------
 if [ "$FAILURES" -ne 0 ]; then
     echo "" >&2

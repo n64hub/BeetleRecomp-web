@@ -48,6 +48,9 @@ def resolve(path):
     # the projection symbol; readable decomp names may change independently.
     instruction('.uvfmtx_rom', 0x1F74, 0xAFA50004)
     instruction('.uvfmtx_rom', 0x1F78, 0x44867000)
+    # The audio manager's teardown: its frame, then osDestroyThread (0x8000A4E0) as its first call.
+    instruction('.uvaudiomgr_rom', 0x8C0, 0x27BDFFE8)
+    instruction('.uvaudiomgr_rom', 0x8CC, 0x0C002938)
     result = {
         'FRUSTUM_PROJECTION': function('.uvfmtx_rom', 0x1F74),
         'INTRO_SKIP': instruction('.intro', 0x618, 0x30B81000),
@@ -58,6 +61,7 @@ def resolve(path):
         'CONT_CLASSIFIER': function('.uvcont_rom', 0x1760),
         'CONT_REINIT': function('.uvcont_rom', 0x1658),
         'AUDIO_LENGTH_NAME': next(iter(hardware)),
+        'AUDIO_TEARDOWN': function('.uvaudiomgr_rom', 0x8C0),
     }
     return result
 

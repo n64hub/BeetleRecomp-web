@@ -512,7 +512,23 @@ suspect (inferred) -- as is anything Beetle-specific, since Hybrid Heaven and Bo
 same WSLg setup. Next: repeat runs to characterise, log the offending guest pointer, and test on native
 Linux.
 
-## LIKELY FIXED (pending a long play session) -- Intermittent crash in `_uvScDoneAud` -> `osSendMesg`
+## RESOLVED -- Intermittent crash in `_uvScDoneAud` -> `osSendMesg`
+
+**Cause, measured on the web page (12 Nov 2026).** The page crashed the same way now and then in
+the menus ("index out of bounds" in `do_send`, the first read of the queue). Logging the audio
+manager's teardown (`func_uvaudiomgr_rom_004008C0`, run three times on the way from the boot to a
+race as the game unloads the module) showed the scheduler still holding an audio task every time,
+queued in its command queue (all three teardowns of a play) or running on the RSP. The teardown
+frees the heap that task lives in, the next audio manager's init zeroes it, and when the RSP is done
+`_uvScDoneAud` sends to the task's `msgQ`, now 0: `do_send` <- `osSendMesg_recomp` <- `_uvScDoneAud`
+<- `_uvScHandleRSP` <- `_uvScMain`, the stack below. On the console the RSP retires the task within
+about a millisecond, long before the next module is loaded. Here the RSP runs it on a host thread and
+the scheduler hears it is done only at a game thread's next OS call, while loading and init run at host
+speed. Holding each audio task's completion back 20 ms made it crash at the first teardown of every
+play; with the fix, the same build played through. The fix: right after the teardown's
+`osDestroyThread`, the App thread yields until the scheduler holds no audio task
+(`src/main/bar_audio_teardown.cpp`, `scripts/fix-recompiled.sh` rule J). The interrupt mask below
+stays: it is right on its own, but it was not this crash's cause.
 
 **28 Oct 2026, macOS:** the same stack recurred after several rounds of a 4-player Beetle Battle,
 faulting in `ultramodern::thread_queue_insert` on an odd, unaligned "thread pointer" -- the audio

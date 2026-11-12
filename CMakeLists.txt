@@ -258,6 +258,7 @@ add_executable(BeetleRecomp
     ${CMAKE_SOURCE_DIR}/src/main/bar_frustum.cpp         # draw distance + the frustum the game culls against
     ${CMAKE_SOURCE_DIR}/src/main/bar_cheats.cpp          # BAR-specific cheats (host-side RDRAM pokes)
     ${CMAKE_SOURCE_DIR}/src/main/bar_preempt.cpp         # cooperative audio-thread preemption (no-underrun)
+    ${CMAKE_SOURCE_DIR}/src/main/bar_audio_teardown.cpp  # the audio manager's teardown waits out its last audio task
     ${CMAKE_SOURCE_DIR}/src/main/bar_crash.cpp           # symbolized crash backtrace (debug aid)
     ${CMAKE_SOURCE_DIR}/src/main/bar_watchdog.cpp        # SDL-pump hang detector: all-thread stacks on a stall
     ${CMAKE_SOURCE_DIR}/src/main/bar_rumble.cpp          # the pulsed Rumble Pak motor, modelled per port (duty -> strength)

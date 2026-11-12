@@ -46,6 +46,18 @@ def main():
                 assert 'original instruction changed' in str(error)
             else:
                 raise AssertionError('Changed projection prologue was accepted')
+        # The audio teardown hook goes in after osDestroyThread: a changed frame or first call is rejected.
+        for target in (0x8C0, 0x8CC):
+            corrupted = bytearray(original)
+            offset = named['.uvaudiomgr_rom'][1][4]+target
+            corrupted[offset:offset+4] = b'\0'*4
+            path.write_bytes(corrupted)
+            try:
+                module.resolve(path)
+            except ValueError as error:
+                assert 'original instruction changed' in str(error)
+            else:
+                raise AssertionError('Changed audio teardown was accepted')
         # Rename only the ELF identifier, preserving all instructions and sizes.
         renamed = bytearray(original)
         address = named['.uvfmtx_rom'][1][3]+0x1F74
@@ -84,9 +96,9 @@ def main():
         for key in ('INTRO_SKIP','CONT_PROBE','CONT_STORE'):
             assert int(moved[key],16) == int(baseline[key],16)+shift
         assert int(moved['MIDI_WAIT_LABEL'][2:],16) == int(baseline['MIDI_WAIT_LABEL'][2:],16)+shift
-        for key in ('CONT_SECTION','CONT_CLASSIFIER','CONT_REINIT','AUDIO_LENGTH_NAME','FRUSTUM_PROJECTION'):
+        for key in ('CONT_SECTION','CONT_CLASSIFIER','CONT_REINIT','AUDIO_LENGTH_NAME','FRUSTUM_PROJECTION','AUDIO_TEARDOWN'):
             assert moved[key] == baseline[key]
-    print('PASS: real ELF resolves; modified target instructions/projection prologue are rejected; renamed projection resolves; rebased modules preserve names/indexes and move all addresses.')
+    print('PASS: real ELF resolves; modified target instructions/projection prologue/audio teardown are rejected; renamed projection resolves; rebased modules preserve names/indexes and move all addresses.')
 
 
 if __name__ == '__main__':
