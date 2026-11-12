@@ -1,15 +1,31 @@
 diff -ruN a/librecomp/src/sp.cpp b/librecomp/src/sp.cpp
 --- a/librecomp/src/sp.cpp	2026-11-12 21:00:08.793323600 +0100
-+++ b/librecomp/src/sp.cpp	2026-11-12 21:00:33.671881200 +0100
-@@ -2,6 +2,7 @@
++++ b/librecomp/src/sp.cpp	2026-11-12 21:03:32.122755000 +0100
+@@ -2,6 +2,9 @@
  #include <fstream>
  #include <ultramodern/ultramodern.hpp>
  #include "recomp.h"
 +#include "ultramodern/displaylists.hpp"
++#include <atomic>
++extern std::atomic<bool> probe_window;
  
  extern "C" void osSpTaskLoad_recomp(uint8_t* rdram, recomp_context* ctx) {
      // Nothing to do here
-@@ -42,6 +43,13 @@
+@@ -16,6 +19,13 @@
+         //printf("[sp] Gfx task: %08X\n", (uint32_t)ctx->r4);
+         // Counted for the loads from ROM that wait for the renderer to read it (ultramodern's displaylists.cpp).
+         ultramodern::displaylist_sent();
++        // TEST: the order of graphics tasks and loads once the loads onto 0x249000 start.
++        if (probe_window) {
++            static int logged = 0;
++            if (logged++ < 300) {
++                fprintf(stderr, "[probe] gfx task sent, list 0x%08X, lists read %u\n", uint32_t(task->t.data_ptr), ultramodern::displaylist_reads() ? ultramodern::displaylist_reads()[0].load() : 0u);
++            }
++        }
+     } else if (task->t.type == M_AUDTASK) {
+         //printf("[sp] Audio task: %08X\n", (uint32_t)ctx->r4);
+     }
+@@ -42,6 +52,13 @@
  
  extern "C" void osSpTaskYield_recomp(uint8_t* rdram, recomp_context* ctx) {
      // Ignore yield requests (acts as if the task completed before it received the yield request)
@@ -25,16 +41,18 @@ diff -ruN a/librecomp/src/sp.cpp b/librecomp/src/sp.cpp
  extern "C" void osSpTaskYielded_recomp(uint8_t* rdram, recomp_context* ctx) {
 diff -ruN a/ultramodern/src/displaylists.cpp b/ultramodern/src/displaylists.cpp
 --- a/ultramodern/src/displaylists.cpp	2026-11-12 20:54:05.410851300 +0100
-+++ b/ultramodern/src/displaylists.cpp	2026-11-12 20:58:58.170461900 +0100
-@@ -2,6 +2,7 @@
++++ b/ultramodern/src/displaylists.cpp	2026-11-12 21:03:32.121757300 +0100
+@@ -2,6 +2,9 @@
  #include <atomic>
  #include <chrono>
  #include <thread>
 +#include <cstdio>
++#include <emscripten.h>
++std::atomic<bool> probe_window{ false };
  
  #include "ultramodern/displaylists.hpp"
  
-@@ -47,6 +48,15 @@
+@@ -47,6 +50,22 @@
      uint32_t sent = lists_sent.load(std::memory_order_relaxed);
      uint32_t read = reads[0].load(std::memory_order_acquire);
      uint32_t first = rdram_address >> unit_shift;
@@ -45,6 +63,13 @@ diff -ruN a/ultramodern/src/displaylists.cpp b/ultramodern/src/displaylists.cpp
 +            uint32_t list = reads[1 + (0x249E00 >> unit_shift)].load(std::memory_order_relaxed);
 +            fprintf(stderr, "[probe] load 0x%06X-0x%06X, lists sent %u read %u, 0x249E00 last read by list %u\n",
 +                rdram_address, rdram_address + size, sent, read, list);
++            probe_window = true;
++            static int stacks = 0;
++            if ((rdram_address <= 0x249EE8) && (rdram_address + size > 0x249EE8) && (stacks++ < 4)) {
++                static char stack[8192];
++                emscripten_get_callstack(EM_LOG_C_STACK, stack, sizeof(stack));
++                fprintf(stderr, "%s\n", stack);
++            }
 +        }
 +    }
      if (read >= sent || size == 0 || first >= units) {
