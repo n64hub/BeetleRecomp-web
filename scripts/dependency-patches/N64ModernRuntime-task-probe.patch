@@ -1,5 +1,5 @@
 --- a/ultramodern/src/displaylists.cpp	2026-11-12 20:54:05.410851300 +0100
-+++ b/ultramodern/src/displaylists.cpp	2026-11-12 20:58:27.986832900 +0100
++++ b/ultramodern/src/displaylists.cpp	2026-11-12 20:58:58.170461900 +0100
 @@ -2,6 +2,7 @@
  #include <atomic>
  #include <chrono>
@@ -8,7 +8,7 @@
  
  #include "ultramodern/displaylists.hpp"
  
-@@ -47,6 +48,16 @@
+@@ -47,6 +48,15 @@
      uint32_t sent = lists_sent.load(std::memory_order_relaxed);
      uint32_t read = reads[0].load(std::memory_order_acquire);
      uint32_t first = rdram_address >> unit_shift;
@@ -17,8 +17,7 @@
 +        static int logged = 0;
 +        if (logged++ < 200) {
 +            uint32_t list = reads[1 + (0x249E00 >> unit_shift)].load(std::memory_order_relaxed);
-+            fprintf(stderr, "[probe] load 0x%06X-0x%06X, lists sent %u read %u, 0x249E00 last read by list %u
-+",
++            fprintf(stderr, "[probe] load 0x%06X-0x%06X, lists sent %u read %u, 0x249E00 last read by list %u\n",
 +                rdram_address, rdram_address + size, sent, read, list);
 +        }
 +    }
