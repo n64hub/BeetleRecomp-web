@@ -1,6 +1,26 @@
 --- a/src/hle/rt64_interpreter.cpp	2026-11-12 20:25:38.293217500 +0100
-+++ b/src/hle/rt64_interpreter.cpp	2026-11-12 20:55:34.212229100 +0100
-@@ -191,7 +191,30 @@
++++ b/src/hle/rt64_interpreter.cpp	2026-11-12 21:04:14.344181400 +0100
+@@ -178,6 +178,19 @@
+         // Check RDRAM if required.
+         state->checkRDRAM();
+ 
++        // TEST: what 0x249EE8 holds as each list starts, once it changes.
++        {
++            static uint32_t lastW0 = 0, lastW1 = 0;
++            static int watchLogged = 0;
++            const uint32_t w0 = *reinterpret_cast<const uint32_t *>(state->RDRAM + 0x249EE8);
++            const uint32_t w1 = *reinterpret_cast<const uint32_t *>(state->RDRAM + 0x249EEC);
++            if (((w0 != lastW0) || (w1 != lastW1)) && (watchLogged++ < 200)) {
++                fprintf(stderr, "[RT64][probe] list %u from 0x%08X: 0x249EE8 holds %08X %08X\n", uint32_t(state->displayListCounter), dlStartAdddress, w0, w1);
++                lastW0 = w0;
++                lastW1 = w1;
++            }
++        }
++
+         // Run the command interpreter.
+         DisplayList *dl = dlStart;
+         uint8_t opCode;
+@@ -191,7 +204,30 @@
          uint8_t *const rdramHi = state->RDRAM + RDRAMSize;   // last valid RDRAM byte (RT64::RDRAMSize)
          uint8_t prevOpCode = 0xFF;
          uint32_t cmdCount = 0;
