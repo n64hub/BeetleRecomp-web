@@ -1,3 +1,29 @@
+diff -ruN a/librecomp/src/sp.cpp b/librecomp/src/sp.cpp
+--- a/librecomp/src/sp.cpp	2026-11-12 21:00:08.793323600 +0100
++++ b/librecomp/src/sp.cpp	2026-11-12 21:00:33.671881200 +0100
+@@ -2,6 +2,7 @@
+ #include <fstream>
+ #include <ultramodern/ultramodern.hpp>
+ #include "recomp.h"
++#include "ultramodern/displaylists.hpp"
+ 
+ extern "C" void osSpTaskLoad_recomp(uint8_t* rdram, recomp_context* ctx) {
+     // Nothing to do here
+@@ -42,6 +43,13 @@
+ 
+ extern "C" void osSpTaskYield_recomp(uint8_t* rdram, recomp_context* ctx) {
+     // Ignore yield requests (acts as if the task completed before it received the yield request)
++    // TEST: when the game asks a task to yield.
++    {
++        static int logged = 0;
++        if (logged++ < 100) {
++            fprintf(stderr, "[probe] yield asked, lists read %u\n", ultramodern::displaylist_reads() ? ultramodern::displaylist_reads()[0].load() : 0u);
++        }
++    }
+ }
+ 
+ extern "C" void osSpTaskYielded_recomp(uint8_t* rdram, recomp_context* ctx) {
+diff -ruN a/ultramodern/src/displaylists.cpp b/ultramodern/src/displaylists.cpp
 --- a/ultramodern/src/displaylists.cpp	2026-11-12 20:54:05.410851300 +0100
 +++ b/ultramodern/src/displaylists.cpp	2026-11-12 20:58:58.170461900 +0100
 @@ -2,6 +2,7 @@
@@ -24,3 +50,29 @@
      if (read >= sent || size == 0 || first >= units) {
          return;
      }
+diff -ruN a/ultramodern/src/mesgqueue.cpp b/ultramodern/src/mesgqueue.cpp
+--- a/ultramodern/src/mesgqueue.cpp	2026-11-12 21:00:07.994490300 +0100
++++ b/ultramodern/src/mesgqueue.cpp	2026-11-12 21:00:33.671881200 +0100
+@@ -1,5 +1,7 @@
+ #include <bitset>
+ #include <thread>
++#include <cstdio>
++#include "ultramodern/displaylists.hpp"
+ 
+ #include "blockingconcurrentqueue.h"
+ 
+@@ -208,6 +210,14 @@
+ }
+ 
+ extern "C" s32 osSendMesg(RDRAM_ARG PTR(OSMesgQueue) mq_, OSMesg msg, s32 flags) {
++    // TEST: the game sending itself the RSP's or RDP's done (a scheduler's recovery).
++    if ((uint32_t(msg) == 667) || (uint32_t(msg) == 668)) {
++        static int logged = 0;
++        if (logged++ < 100) {
++            fprintf(stderr, "[probe] the game sent itself %u, lists read %u\n", uint32_t(msg), ultramodern::displaylist_reads() ? ultramodern::displaylist_reads()[0].load() : 0u);
++        }
++    }
++
+     OSMesgQueue *mq = TO_PTR(OSMesgQueue, mq_);
+     bool jam = false;
+     
