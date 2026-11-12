@@ -1,0 +1,32 @@
+--- a/src/hle/rt64_interpreter.cpp	2026-11-12 20:25:38.293217500 +0100
++++ b/src/hle/rt64_interpreter.cpp	2026-11-12 20:25:39.227202100 +0100
+@@ -191,7 +191,29 @@
+         uint8_t *const rdramHi = state->RDRAM + RDRAMSize;   // last valid RDRAM byte (RT64::RDRAMSize)
+         uint8_t prevOpCode = 0xFF;
+         uint32_t cmdCount = 0;
++        // TEST: a list that runs past 4M commands prints where it is and its last commands, then stops.
++        struct ProbeCmd { uint32_t address, w0, w1, stack; };
++        ProbeCmd probeRing[48] = {};
+         while (dl != nullptr) {
++            if (cmdCount == 4000000) {
++                fprintf(stderr, "[RT64][probe] list %u from 0x%08X ran 4M commands, now at 0x%08X, return stack %zu; last commands:
++",
++                    state->displayListCounter, dlStartAdddress, uint32_t(reinterpret_cast<uint8_t *>(dl) - rdramLo), state->returnAddressStack.size());
++                for (uint32_t k = 0; k < 48; k++) {
++                    const ProbeCmd &c = probeRing[(cmdCount + k) % 48];
++                    fprintf(stderr, "[RT64][probe]   0x%08X: %08X %08X (stack %u)
++", c.address, c.w0, c.w1, c.stack);
++                }
++                for (uint32_t k = 0; k < 16; k++) {
++                    fprintf(stderr, "[RT64][probe]   segment %u = 0x%08X
++", k, state->rsp->segments[k]);
++                }
++                break;
++            }
++            if ((reinterpret_cast<uint8_t *>(dl) >= rdramLo) && ((reinterpret_cast<uint8_t *>(dl) + sizeof(DisplayList)) <= rdramHi)) {
++                probeRing[cmdCount % 48] = { uint32_t(reinterpret_cast<uint8_t *>(dl) - rdramLo), dl->w0, dl->w1, uint32_t(state->returnAddressStack.size()) };
++            }
++
+             if (reinterpret_cast<uint8_t *>(dl) < rdramLo ||
+                 (reinterpret_cast<uint8_t *>(dl) + sizeof(DisplayList) - 1) > rdramHi) {
+                 static int logged = 0;
