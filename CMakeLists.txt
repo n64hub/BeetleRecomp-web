@@ -69,7 +69,6 @@ if (EMSCRIPTEN)
     # BeetleRecomp.html.symbols beside the page, the wasm's function names by index, for reading a crash's stack (the
     # page itself has none). It isn't published.
     add_link_options(--emit-symbol-map)
-    add_link_options(--profiling-funcs -Wl,--wrap=sbrk)  # TEST: the sbrk probe's names
     # ccache when it is on PATH.
     include(${CMAKE_SOURCE_DIR}/lib/N64Recomp-browser/frontend/build_speed.cmake)
     # The shaders the page specializes at build time: the boot's before the game starts, each section's when the game
@@ -396,7 +395,7 @@ endif()
 if (EMSCRIPTEN)
     n64recomp_browser_frontend_page(BeetleRecomp)
     set(BEETLE_RMLUI_FONTS "${CMAKE_SOURCE_DIR}/lib/RecompFrontend/recompui/lib/RmlUi/Samples/assets")
-    target_link_options(BeetleRecomp PRIVATE
+    target_link_options(BeetleRecomp PRIVATE --profiling-funcs -Wl,--wrap=sbrk  # TEST: the sbrk probe
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets/ui@/assets"
         "SHELL:--preload-file ${BEETLE_RMLUI_FONTS}/LatoLatin-Regular.ttf@/assets/LatoLatin-Regular.ttf"
         "SHELL:--preload-file ${BEETLE_RMLUI_FONTS}/LatoLatin-Bold.ttf@/assets/LatoLatin-Bold.ttf"
