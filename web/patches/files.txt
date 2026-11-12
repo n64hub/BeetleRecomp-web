@@ -18,7 +18,7 @@
 # and the web's rule of which players read the keyboard (player_reads_profile) comes before. Its controls page keeps its
 # own profile index (set_current_profile_index) after the web's switch out of single-player mode, and shows the keyboard
 # toggle and keys by the web's controller_player_has_keyboard.
-# merged from N64Recomp-browser 15bfbca51a924c29eb6949088a381395a6d3e8d0
+# merged from N64Recomp-browser 38fe6a64a2a4e051094f75ad1df2838aa94d0bf7
 rt64 src/hle/rt64_present_queue.h
 rt64 src/hle/rt64_state.cpp
 rt64 src/hle/rt64_workload_queue.cpp
