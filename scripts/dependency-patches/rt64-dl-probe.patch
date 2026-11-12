@@ -1,5 +1,5 @@
 --- a/src/hle/rt64_interpreter.cpp	2026-11-12 20:25:38.293217500 +0100
-+++ b/src/hle/rt64_interpreter.cpp	2026-11-12 20:43:10.325486000 +0100
++++ b/src/hle/rt64_interpreter.cpp	2026-11-12 20:55:34.212229100 +0100
 @@ -191,7 +191,30 @@
          uint8_t *const rdramHi = state->RDRAM + RDRAMSize;   // last valid RDRAM byte (RT64::RDRAMSize)
          uint8_t prevOpCode = 0xFF;
@@ -12,8 +12,8 @@
 +            const uint32_t probeOffset = uint32_t(reinterpret_cast<uint8_t *>(dl) - rdramLo);
 +            if ((probeOffset < 0x1000) || (cmdCount >= 4000000)) {
 +                if (probeLogged++ < 6) {
-+                    fprintf(stderr, "[RT64][probe] list %u from 0x%08X reached 0x%08X after %u commands, return stack %u; the commands before:\n",
-+                        uint32_t(state->displayListCounter), dlStartAdddress, probeOffset, cmdCount, uint32_t(state->returnAddressStack.size()));
++                    fprintf(stderr, "[RT64][probe] list %u (runtime read %u) from 0x%08X reached 0x%08X after %u commands, return stack %u; the commands before:\n",
++                        uint32_t(state->displayListCounter), (state->displayListReads != nullptr) ? state->displayListReads[0].load() : 0u, dlStartAdddress, probeOffset, cmdCount, uint32_t(state->returnAddressStack.size()));
 +                    for (uint32_t k = 0; k < 64; k++) {
 +                        const ProbeCmd &c = probeRing[(cmdCount + k) % 64];
 +                        fprintf(stderr, "[RT64][probe]   0x%08X: %08X %08X (stack %u)\n", c.address, c.w0, c.w1, c.stack);

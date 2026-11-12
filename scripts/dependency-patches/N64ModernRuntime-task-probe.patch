@@ -1,36 +1,27 @@
---- a/ultramodern/src/events.cpp	2026-11-12 20:34:00.704166700 +0100
-+++ b/ultramodern/src/events.cpp	2026-11-12 20:34:33.468536200 +0100
-@@ -10,6 +10,9 @@
- #include <mutex>
- #include <queue>
- #include <cstring>
-+#ifdef __EMSCRIPTEN__
-+#include <emscripten.h>
-+#endif
+--- a/ultramodern/src/displaylists.cpp	2026-11-12 20:54:05.410851300 +0100
++++ b/ultramodern/src/displaylists.cpp	2026-11-12 20:54:27.539329800 +0100
+@@ -2,6 +2,7 @@
+ #include <atomic>
+ #include <chrono>
+ #include <thread>
++#include <cstdio>
  
- #include "blockingconcurrentqueue.h"
+ #include "ultramodern/displaylists.hpp"
  
-@@ -858,6 +861,23 @@
- 
-     // Send gfx tasks to the graphics action queue
-     if (task->t.type == M_GFXTASK) {
-+        // TEST: a graphics task whose display list isn't in RDRAM.
-+        if (((uint32_t(task->t.data_ptr) & 0x1FFFFFFF) == 0) || ((uint32_t(task->t.data_ptr) & 0x1FFFFFFF) >= 0x800000)) {
-+            static int logged = 0;
-+            if (logged++ < 4) {
-+                const uint32_t *words = reinterpret_cast<const uint32_t *>(task);
-+                fprintf(stderr, "[probe] gfx task at 0x%08X with data_ptr 0x%08X:", uint32_t(task_), uint32_t(task->t.data_ptr));
-+                for (int w = 0; w < 16; w++) {
-+                    fprintf(stderr, " %08X", words[w]);
-+                }
-+                fprintf(stderr, "\n");
-+#ifdef __EMSCRIPTEN__
-+                static char stack[8192];
-+                emscripten_get_callstack(EM_LOG_C_STACK, stack, sizeof(stack));
-+                fprintf(stderr, "%s\n", stack);
-+#endif
-+            }
+@@ -47,6 +48,16 @@
+     uint32_t sent = lists_sent.load(std::memory_order_relaxed);
+     uint32_t read = reads[0].load(std::memory_order_acquire);
+     uint32_t first = rdram_address >> unit_shift;
++    // TEST: a load onto the model memory list 1465 ran.
++    if ((rdram_address < 0x24A000) && (rdram_address + size > 0x249000)) {
++        static int logged = 0;
++        if (logged++ < 200) {
++            uint32_t list = reads[1 + (0x249E00 >> unit_shift)].load(std::memory_order_relaxed);
++            fprintf(stderr, "[probe] load 0x%06X-0x%06X, lists sent %u read %u, 0x249E00 last read by list %u
++",
++                rdram_address, rdram_address + size, sent, read, list);
 +        }
-         events_context.action_queue.enqueue(SpTaskAction{ *task });
++    }
+     if (read >= sent || size == 0 || first >= units) {
+         return;
      }
-     // Set all other tasks as the RSP task
