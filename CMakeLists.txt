@@ -69,6 +69,7 @@ if (EMSCRIPTEN)
     # BeetleRecomp.html.symbols beside the page, the wasm's function names by index, for reading a crash's stack (the
     # page itself has none). It isn't published.
     add_link_options(--emit-symbol-map)
+    add_link_options(--profiling-funcs -Wl,--wrap=sbrk)  # TEST: the sbrk probe's names
     # ccache when it is on PATH.
     include(${CMAKE_SOURCE_DIR}/lib/N64Recomp-browser/frontend/build_speed.cmake)
     # The shaders the page specializes at build time: the boot's before the game starts, each section's when the game
@@ -248,6 +249,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(BeetleRecomp
     ${CMAKE_SOURCE_DIR}/src/main/main.cpp
+    ${CMAKE_SOURCE_DIR}/src/main/bar_sbrk_probe.cpp      # TEST
     ${CMAKE_SOURCE_DIR}/src/main/os_unimpl_stubs.cpp     # controller DMA and remaining low-level OS bindings
     ${CMAKE_SOURCE_DIR}/src/main/register_overlays.cpp   # wires recomp_overlays.inl into librecomp
     ${CMAKE_SOURCE_DIR}/src/main/overlay_bridge.cpp      # registers uv modules as overlays on load
