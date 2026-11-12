@@ -252,14 +252,17 @@ checkout, ignored by git. Serve `build-web` with `Cross-Origin-Opener-Policy: sa
 the page where headers can't be set, and open it in a browser with WebGPU. The ROM, settings and saves are kept in the
 browser's storage.
 
-The page keeps RT64's render to RAM and its exact copy of each frame into RDRAM, which waits 5-6 ms a display list
-for the browser's readback (`src/frontend/bar_frontend.cpp`). The game's CPU reads its frames in three places: the
-sun glare reads 25 depths around the sun from the Z-buffer of the list before the one just sent
-(`func_glare_00400BA4`), the car's reflection samples a patch of a frame about two lists old with one player
-(`func_caranim_00404074`), and the menus' film-roll transitions copy the frame just drawn into the other framebuffer
-(`uvCopyFrameBuf`). Each could take a frame a list old, but with the copy a list late (`set_render_to_ram_late`) the
-page never got from the menus into a race, in Chrome or Firefox, and Chrome's ran out of memory there. The depth
-fog's read of the Z-buffer is the RDP's, done on the GPU.
+The page keeps RT64's render to RAM and copies each frame into RDRAM a list late (`set_render_to_ram_late`,
+`src/frontend/bar_frontend.cpp`), which spares each display list the 5-6 ms RT64's exact copy waits for the browser's
+readback. The game's CPU reads its frames in three places: the sun glare reads 25 depths around the sun from the
+Z-buffer of the list before the one just sent (`func_glare_00400BA4`), the car's reflection samples a patch of a frame
+about two lists old with one player (`func_caranim_00404074`), and the menus' film-roll transitions copy the frame just
+drawn into the other framebuffer (`uvCopyFrameBuf`). With the late copy each takes a frame a list old. The depth fog's
+read of the Z-buffer is the RDP's, done on the GPU. The game's scheduler asks the RSP to yield the graphics task
+whenever an audio task comes and takes a yield unanswered at the next VI for a hung RSP, sending itself both done
+messages; the late copy left the next list queued long enough for that, and lists were taken for done before RT64 read
+them, until the page ran out of memory, so the late copy needs N64Recomp-browser's runtime with
+`ULTRAMODERN_YIELDS_END_QUEUED_GRAPHICS`, which answers the yield.
 
 The page records and builds a list of the game's RT64 shaders before the game starts (`web/rt64_shaders.txt`, whose
 header says how it was recorded), and `tools/play_plan.json` is the play N64Recomp-browser's `tools/play_page.mjs`
