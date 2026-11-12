@@ -964,6 +964,11 @@ bar::frontend::create_render_context(uint8_t* rdram,
 #ifdef __EMSCRIPTEN__
     // Not on a page, which has no use for RT64's debug UI: F1 there would build it for WebGPU mid-game.
     constexpr bool rt64_developer_mode = false;
+    // Render to RAM keeps RT64's exact copy on a page, though each display list then waits 5-6 ms for the browser's
+    // readback. The game's CPU reads its frames in three places, each of which could take one a list old (the sun
+    // glare's Z-buffer samples, the car's reflection, the menus' film-roll transitions), but with the copy a list late
+    // (set_render_to_ram_late) the page never got from the menus into a race and ran out of memory (BUILDING.md, The
+    // web page).
 #else
     constexpr bool rt64_developer_mode = true;
 #endif
