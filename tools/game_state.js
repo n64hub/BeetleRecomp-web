@@ -20,6 +20,11 @@
 //   untilState(n, ms)  resolves once gameState() is n, or after ms.
 //   trackChanges()  how many times track() has changed since this file was evaluated (Track Select's Right moves it),
 //       polled every 50 ms, leaving out the intro's track (27) and back.
+//   openTracks(n)  gNumOpenTracks (0x8002CFF0), how many of the single race's tracks Track Select offers, in its order
+//       (Coventry Cove, track() 5; Mount Mayhem, 7; Inferno Isle, 9; Sunset Sands; Metro Madness, 10; Wicked Woods),
+//       wrapping at the last: a new save's 2, which the game raises as championships are won (the desktop build's
+//       Unlock everything cheat writes 6, src/main/bar_cheats.cpp). The pause menu's Track Select (New Track) reads it
+//       too, and moves no currentTrack until a track is chosen.
 (() => {
   const SETTINGS = 0x80025CF0;
   const s32 = (offset) => n64r(SETTINGS + offset) | 0;
@@ -51,6 +56,7 @@
     else raceStart = null;
   }, 50);
   window.trackChanges = () => changes;
+  window.openTracks = (n) => n64w(0x8002CFF0, n);
   window.untilState = async (n, ms) => {
     const end = Date.now() + ms;
     while (gameState() !== n && Date.now() < end) await sleep(50);

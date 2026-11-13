@@ -12,10 +12,15 @@
 # tracks Track Select offers a new save, driven as tools/play_plan.json drives (backing out of what the car is stuck
 # against on Coventry Cove only), 70 s of the race's clock from its load (its flyover and countdown included):
 # Coventry Cove, and Mount Mayhem (one Right at Track Select) twice, the second time in the yellow car (a second
-# Right, which Car Select takes). Not recorded: the tracks a save opens later, Championship's screens between races,
-# Time Attack, Two Player's split screen, Beetle Battle and a race's end. Flags follow settings (filtering, HDR,
-# upscaling), so a change to one of those defaults means recording again. The shaders tools/play_plan.json's plays
-# missed, where its car went other ways, were added by hand: 4 in section 0 and 17 in Coventry Cove's.
+# Right, which Car Select takes). Not recorded: Sunset Sands and Wicked Woods, which a save opens later, Championship's
+# screens between races, Time Attack, Two Player's split screen, Beetle Battle and a race's end. Flags follow settings
+# (filtering, HDR, upscaling), so a change to one of those defaults means recording again. The shaders
+# tools/play_plan.json's plays missed, where its car went other ways, were added by hand: 4 in section 0 and 17 in
+# Coventry Cove's. So were tools/play_plan_extended.json's on a fresh profile, which opens the other four tracks
+# (gNumOpenTracks) before it leaves Coventry Cove by the pause menu's New Track and races Inferno Isle and Metro
+# Madness after it: 1 in section 0 and a section for each of those two tracks, each with what the play missed from its
+# Track Select to the next pause, since Car Select draws the chosen track behind it (Chrome's 15 and 54, and 5 more on
+# Inferno Isle in Firefox).
 00504240 00002c3f fc119623 ff2fffff 04cb550b
 0c184340 00182c3f fcffffff fffe7838 0800000a
 0f0a7008 00002c3f fc11fe23 fffff3f9 04cb540b
@@ -154,6 +159,7 @@
 0c184dd8 0018ac0f fc1219ff fffffe38 088a000e
 0c192d58 00182c0f fc127fff fffff838 099b100e
 0c182079 00182c0f fc117e04 fffffffa 088e000a
+0c184240 00102caf fcffb3ff fffdfe38 0aaaaa0b
 section coventry-cove
 0c182078 0019ac3f fc26a004 1f1093ff 1a26220e
 0c182078 00182c0f fc117e04 fffffffa 088e000a
@@ -279,3 +285,79 @@ section mount-mayhem
 0c1849d8 00182c0f fcffb3ff ffffff38 0aaaaa0e
 0c1841c8 00180c0f fcffffff fffe7838 0800000a
 0c182078 0019ac3f fc26a004 1f1093ff 1ccf540e
+section inferno-isle
+0c182078 00182c0f fc117e04 fffffffa 08ce140e
+0c183078 00182c0f fc117e04 fffffffa 08b6120a
+0c185279 00182c0f fc1219ff fffffe38 088a000e
+0c184dd9 00182c0f fc1219ff fffffe38 0a22220e
+0c1849d8 00182c0f fc1219ff fffffe38 0bba440e
+0c1849d8 00182c0f fc117e04 fffffffa 08b6120a
+0c182078 00182c0f fc1219ff fffffe38 0bba440e
+0c185279 00182c0f fc117e04 fffffffa 0ccf540a
+0c185279 00182c0f fc127fff fffff438 0807540a
+0c185279 00182c0f fc117e04 fffffffa 0ccf540e
+0c1849d8 00182c0f fc1218a2 f0ffff38 0ccb540e
+0c185279 00182c0f fc157e04 ff11f3ff 0b33320e
+0c185279 00182c0f fcffb3ff ffffff38 0b33320a
+0c185279 00182c0f fc157e04 ff11f3ff 0b33320a
+0c182078 00192c0f fc26a004 1f1093ff 1ccf540e
+0f0a4000 00102c3f fcffffff fffe7838 0000000b
+0c1849d8 00192c0f fc26a004 1f1093ff 1ccf540e
+0c184b50 00182caf fc1197ff fffffe38 0ccb540a
+0c184240 00102caf fc1197ff fffffe38 0aaaaa0b
+0c184340 00192c3f fcffffff fffe7838 1889540a
+section metro-madness
+0f0a4000 0018ac0f fc1219ff fffffe38 0ccb540e
+0c184240 00182c0f fc327e02 f4fff338 0ccb540e
+0c184240 0018ac0f fc1219ff fffffe38 0ccb540e
+0f0a4000 00182c0f fc127fff fffff838 0a22220e
+0f0a4001 00182c0f fc40fe61 ff2ffe3a 088e000e
+0f0a4000 0018ac0f fc1219ff fffffe38 0b33320e
+0f0a4000 00192c0f fc26a004 1ffc93fc 1a26220e
+0c182078 00182c0f fc40fe61 fffffe3e 0a26220e
+0c182079 00182c0f fc127fff fffff838 0a22220e
+0c182079 00182c0f fc40fe61 ff2ffe3a 088e000e
+0c182078 0018ac0f fc1219ff fffffe38 0803100e
+0c184dd8 00180c0f fcffb3ff ffffff38 0803100e
+0c184dd8 00182c0f fc111480 f513ff7f 088e000e
+0c182078 0018ac0f fc1219ff fffffe38 0b33320e
+0c182078 001b2c0f fc26a004 1f1093ff 1806008e
+0c182079 00182c0f fc127fff fffff838 0bba440e
+0c182078 00192c0f fc26a004 1ffc93fc 1806008a
+0c183078 00182c0f fc247ec0 f2fffebe 080f000e
+0c185279 00182c0f fcffffff fffffe7b 088c000a
+0c184dd8 001b2c0f fc26a004 1f1093ff 1806008a
+0c182078 0018ac0f fc1219ff fffffe38 0aaaaa0e
+0c1849d8 00182c0f fc111480 f513ff7f 088e000a
+0c1849d8 00182c0f fcfffe82 f553ff7f 088a000a
+0c182078 00182c0f fc127fff fffff838 0bba440e
+0c182078 00182c0f fc127fff fffff838 0912880e
+0c182078 0018ac0f fc1219ff fffffe38 0912880e
+0c182078 00182c0f fc127e20 fffffffe 099f100a
+0c183078 0018ac0f fc1219ff fffffe38 0ccb540e
+0c185279 00182c0f fc117e04 fffffffa 089e100a
+0c183078 0018ac0f fcffffff fffcf238 0b33320a
+0c185279 001b2c0f fc26a004 1f1093ff 1806008e
+0c183078 0018ac0f fc1219ff fffffe38 0b33320a
+0c183078 00182c0f fc1219ff fffffe38 0b33320e
+0c182078 00192c0f fc26a004 1f1093ff 1806008a
+0c182078 00182c0f fc1219ff fffffe38 0aaaaa0e
+0c182078 00182c0f fc127fff fffff838 0aaaaa0e
+0c185279 001b2c0f fc26a004 1f1093ff 1806008a
+0c182078 00182c0f fc117e04 fffffffa 099f100e
+0c182078 00182c0f fc127e20 fffffffe 099f100e
+0c182078 00182c0f fc117e04 fffffffa 0a26220e
+0c182078 00182c0f fc117e04 fffffffa 0b37320e
+0c182078 00182c0f fc40fe61 ff2ffe3a 088e000e
+0c184a50 00192c8f fc127e4a f3fffe3a 1ccb540e
+0c182078 00192c8f fc26a004 1ffc93fc 1806008e
+0c182078 00192c8f fc26a004 1f1093ff 1806008a
+0c1849d8 001b2c0f fc26a004 1f1093ff 1806008a
+0c182078 00182c0f fc127fff fffff838 0a22220a
+0c182078 00192c8f fc26a004 1ffc93fc 1ccf540e
+0c1849d8 001b2c8f fc26a004 1f1093ff 1806008a
+0c182078 00192c8f fc26a004 1f1093ff 1806008e
+0c192230 00182c8f fcffffff fffe7838 0800000e
+0c1849d8 00192c0f fcffa1ff fffe1238 1aaeaa0e
+0c182078 0018ac0f fc1219ff fffffe38 0803550a
+0c182078 0018ac0f fc1219ff fffffe38 0803550e

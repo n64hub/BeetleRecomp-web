@@ -263,4 +263,7 @@ fog's read of the Z-buffer is the RDP's, done on the GPU.
 
 The page records and builds a list of the game's RT64 shaders before the game starts (`web/rt64_shaders.txt`, whose
 header says how it was recorded), and `tools/play_plan.json` is the play N64Recomp-browser's `tools/play_page.mjs`
-measures it by. `tools/game_state.js` reads where the game is from RDRAM for both.
+measures it by. `tools/play_plan_extended.json` starts the same and goes on, by the pause menu's New Track, to Inferno
+Isle and Metro Madness, about 290 s in Chrome, for a change that needs a longer play: a new save offers only Coventry
+Cove and Mount Mayhem, so it writes the count of tracks a save has opened (`gNumOpenTracks`) before it leaves the
+first race, and its header says the rest. `tools/game_state.js` reads where the game is from RDRAM for all three.
