@@ -1,7 +1,20 @@
 diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
 --- a/ultramodern/src/events.cpp
 +++ b/ultramodern/src/events.cpp
-@@ -56,6 +56,24 @@
+@@ -41,7 +41,11 @@
+     int32_t fb_address;
+ };
+ 
+-using Action = std::variant<SpTaskAction, ScreenUpdateAction, UpdateConfigAction, DummyWorkloadAction>;
++struct PrepareForGameAction {
++    moodycamel::LightweightSemaphore* done;
++};
++
++using Action = std::variant<SpTaskAction, ScreenUpdateAction, UpdateConfigAction, DummyWorkloadAction, PrepareForGameAction>;
+ 
+ struct ViState {
+     const OSViMode* mode = nullptr;
+@@ -56,6 +60,24 @@
  #define VI_STATE_BLACK 0x20
  #define VI_STATE_REPEATLINE 0x40
  
@@ -26,7 +39,7 @@ diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
  static struct {
      struct {
          std::thread thread;
-@@ -139,7 +157,7 @@
+@@ -139,7 +161,7 @@
      // The same message queue may be used for multiple events, so share a mutex for all of them
      std::mutex message_mutex;
      uint8_t* rdram;
@@ -35,7 +48,7 @@ diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
      moodycamel::BlockingConcurrentQueue<OSTask*> sp_task_queue{};
      moodycamel::ConcurrentQueue<OSThread*> deleted_threads{};
  } events_context{};
-@@ -182,6 +200,182 @@
+@@ -182,6 +204,182 @@
  
  
  extern std::atomic_bool exited;
@@ -218,7 +231,7 @@ diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
  extern moodycamel::LightweightSemaphore graphics_shutdown_ready;
  
  void set_dummy_vi(bool odd);
-@@ -218,10 +412,31 @@
+@@ -218,10 +416,31 @@
              // printf("Skipping the next VI wait\n");
              next = std::chrono::high_resolution_clock::now();
          }
@@ -250,7 +263,7 @@ diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
          if (new_total_vis > total_vis + 1) {
              //printf("Skipped % " PRId64 " frames in VI interupt thread!\n", new_total_vis - total_vis - 1);
          }
-@@ -240,9 +455,17 @@
+@@ -240,9 +459,17 @@
                  events_context.action_queue.enqueue(DummyWorkloadAction{events_context.vi.get_next_state()->framebuffer});
              }
  
@@ -268,7 +281,20 @@ diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
          }
  
          // If the game has started, handle sending VI and AI events. Skipped while paused so the game
-@@ -279,6 +502,11 @@
+@@ -273,12 +500,24 @@
+ }
+ 
+ void sp_complete() {
++#if ULTRAMODERN_YIELDS_END_QUEUED_GRAPHICS
++    // A graphics task's RSP done went already if a yield was asked of it while it waited (rsp::yield_asked).
++    if ((std::this_thread::get_id() == events_context.sp.gfx_thread.get_id()) && !ultramodern::rsp::graphics_sp_due()) {
++        return;
++    }
++#endif
++
+     uint8_t* rdram = events_context.rdram;
+     std::lock_guard lock{ events_context.message_mutex };
+     ultramodern::enqueue_external_message_src(events_context.sp.mq, events_context.sp.msg, false, ultramodern::EventMessageSource::Sp);
  }
  
  void dp_complete() {
@@ -280,7 +306,23 @@ diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
      uint8_t* rdram = events_context.rdram;
      std::lock_guard lock{ events_context.message_mutex };
      ultramodern::enqueue_external_message_src(events_context.dp.mq, events_context.dp.msg, false, ultramodern::EventMessageSource::Dp);
-@@ -373,6 +601,9 @@
+@@ -339,6 +578,15 @@
+     events_context.action_queue.enqueue(UpdateConfigAction{});
+ }
+ 
++// The graphics thread takes it after every action queued before it: the launcher's lists and screen updates, all of
++// them the renderer's before the game's. With Emscripten the VI thread sends no VI while the renderer is in it
++// (renderer_stalled()), so the game, its audio interrupts included, starts after it, as if it had started then.
++void ultramodern::renderer::prepare_for_game() {
++    moodycamel::LightweightSemaphore done;
++    events_context.action_queue.enqueue(PrepareForGameAction{ &done });
++    done.wait();
++}
++
+ std::atomic<ultramodern::renderer::SetupResult> renderer_setup_result = ultramodern::renderer::SetupResult::Success;
+ std::atomic<ultramodern::renderer::GraphicsApi> renderer_chosen_api = ultramodern::renderer::GraphicsApi::Auto;
+ 
+@@ -373,6 +621,9 @@
      while (!exited) {
          // Try to pull an action from the queue
          Action action;
@@ -290,3 +332,14 @@ diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
          if (events_context.action_queue.wait_dequeue_timed(action, 1ms)) {
              // Determine the action type and act on it
              if (const auto* task_action = std::get_if<SpTaskAction>(&action)) {
+@@ -412,6 +663,10 @@
+             else if (const auto* dummy_workload_action = std::get_if<DummyWorkloadAction>(&action)) {
+                 renderer_context->send_dummy_workload(dummy_workload_action->fb_address);
+             }
++            else if (const auto* prepare_action = std::get_if<PrepareForGameAction>(&action)) {
++                renderer_context->prepare_for_game();
++                prepare_action->done->signal();
++            }
+         }
+     }
+ 
