@@ -27,7 +27,10 @@
 # 4. The page, with emcmake, in build-web (CMakeLists.txt's EMSCRIPTEN parts).
 # N64Recomp-browser's CI runs --patches with its own checkout as lib/N64Recomp-browser and the submodules checked out,
 # so a web change there that meets this port's own lines in a file left out is red where it is made: merge it into the
-# patch by hand then.
+# patch by hand then. --patches puts back only the submodules that are checked out and initializes none: the patches
+# change rt64, plume, hlslpp, N64ModernRuntime and N64Recomp alone, and the rest of the tree at full depth (dxc,
+# mupen64plus-core, imgui, plume's Vulkan headers, N64Recomp's libraries) took that CI step 1-2 minutes, and 18 on a
+# slow day for GitHub's git, near its 20-minute limit.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 [[ $# -ge 1 ]] || { echo "usage: $0 <USA ROM> [cpus] [--prepare] | --patches" >&2; exit 2; }
@@ -89,11 +92,14 @@ stamp="$(git -C $browser rev-parse HEAD) $( (cat tools/build_web.sh scripts/depe
     sha1sum | cut -c1-40)"
 # A checkout reset since is patched again whatever the stamp says: rt64 clean, or this repo's RecompFrontend, whose
 # files a checkout of another commit of this repo puts back (a build host's sync).
+# --patches initializes no submodule (above): one not checked out is left out.
+init=--init
+[[ $mode != patches ]] || init=
 if [[ "$(cat $prep/web-patched 2> /dev/null)" != "$stamp" ]] || git -C lib/rt64 diff --quiet ||
     git diff --quiet -- lib/RecompFrontend; then
     for s in lib/rt64 lib/N64ModernRuntime lib/N64Recomp; do
         git -C $s submodule foreach --recursive -q 'git reset -q --hard && git clean -fdq'
-        git -C $s submodule update -q --init --recursive --force
+        git -C $s submodule update -q $init --recursive --force
         git -C $s reset -q --hard && git -C $s clean -fdq
         rm -f "$(git -C $s rev-parse --path-format=absolute --git-dir)"/n64recomp-browser-*
     done
@@ -107,7 +113,7 @@ if [[ "$(cat $prep/web-patched 2> /dev/null)" != "$stamp" ]] || git -C lib/rt64 
     # rt64's index names that plume too, so a recursive submodule update over this checkout (a build host's sync)
     # finds plume where rt64 says it is and leaves it, patched, in place of putting back the commit rt64's own pins.
     git -C lib/rt64 update-index --cacheinfo 160000,$plume,src/contrib/plume
-    git -C lib/rt64/src/contrib/plume submodule update -q --init --recursive
+    git -C lib/rt64/src/contrib/plume submodule update -q $init --recursive
     while read -r checkout patch; do
         git -C "$checkout" apply --whitespace=nowarn "$root/scripts/dependency-patches/$patch.patch"
     done <<< "$own_patches"
